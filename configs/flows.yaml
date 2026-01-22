@@ -1,0 +1,54 @@
+version: 1
+categories:
+  vpn:
+    description: "VPN connectivity or login issues"
+    required_fields:
+      - os
+      - device_type
+      - network_type
+      - error_message
+      - mfa_working
+    questions:
+      os: "What OS are you on (Windows/macOS/Linux/iOS/Android) and version if known?"
+      device_type: "What device are you using (laptop, desktop, phone) and is it company-managed?"
+      network_type: "Are you on home Wi-Fi, mobile hotspot, or on-site network?"
+      error_message: "What is the exact VPN error message/code? Copy/paste if possible."
+      mfa_working: "Is MFA working for other sign-ins today (yes/no/unsure)?"
+    max_steps: 6
+  email:
+    description: "Email access or delivery issues"
+    required_fields:
+      - os
+      - client
+      - symptom
+      - scope
+    questions:
+      os: "What OS are you on (Windows/macOS/Linux/iOS/Android)?"
+      client: "Which email client are you using (Outlook, OWA/webmail, Apple Mail, mobile app)?"
+      symptom: "What exactly is happening (can't sign in, missing mail, bounce, delayed delivery, etc.)?"
+      scope: "Is it just you or multiple users? If unsure, say 'unsure'."
+    max_steps: 6
+  wifi:
+    description: "Wi-Fi connectivity issues"
+    required_fields:
+      - device_type
+      - location
+      - other_devices
+      - error_message
+    questions:
+      device_type: "What device is affected (laptop/phone) and is it company-managed?"
+      location: "Where are you when this happens (home, office, campus, other)?"
+      other_devices: "Do other devices on the same Wi-Fi work (yes/no/unsure)?"
+      error_message: "Any specific message (e.g., 'No Internet', 'Connected without Internet')?"
+    max_steps: 6
+fallback:
+  description: "General support"
+  required_fields:
+    - summary
+    - device_type
+    - os
+  questions:
+    summary: "Give me a one-sentence summary of the issue."
+    device_type: "What device is this on (laptop/desktop/phone) and is it company-managed?"
+    os: "What OS are you on?"
+  max_steps: 6

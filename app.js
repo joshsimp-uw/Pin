@@ -36,7 +36,7 @@
   $("#buildDate").textContent = now.toISOString();
   $("#companyMeta").textContent = session.company;
   $("#userMeta").textContent = session.email;
-  $("#userBadge").textContent = `${session.email} • ${session.dept}`;
+  $("#userBadge").textContent = session.email; // got rid of dept
 
   const logout = () => {
     localStorage.removeItem("pin_session");
@@ -64,7 +64,7 @@
     const kpis = [
       { label: "Company", value: session.company },
       { label: "User", value: session.email },
-      { label: "Department", value: session.dept },
+      // { label: "Department", value: session.dept },
       { label: "Open chats", value: String(open) },
       { label: "Closed chats", value: String(closed) },
       { label: "Selected", value: selected ? selected.name : "—" },
@@ -203,7 +203,7 @@
       const title = chat.name === "New Issue" ? "Issue" : chat.name;
       const payload = {
         company: session.company,
-        requester: { email: session.email, department: session.dept },
+        requester: { email: session.email }, // got rid of dept
         title,
         createdAt: new Date().toISOString(),
         transcript: chat.messages,
@@ -445,7 +445,7 @@
         const title = chat.name || "Issue";
         const payload = {
           company: session.company,
-          requester: { email: session.email, department: session.dept },
+          requester: { email: session.email }, // got rid of dept
           title,
           createdAt: new Date().toISOString(),
           transcript: chat.messages,

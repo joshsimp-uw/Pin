@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <!-- Page meta -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ACME IT Helpdesk — Admin</title>
+  <meta name="description" content="Pin admin configuration panel." />
+
+  <!-- Same styling + branding as rest of site -->
+  <link rel="icon" href="./assets/pin-ticket.png" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <div class="app">
+
+    <!-- Header -->
+    <header class="header">
+      <div class="container header-inner">
+
+        <!-- Left: Branding -->
+        <div class="acme-logo">
+          <div class="acme-mark" aria-hidden="true"></div>
+          <div class="acme-word">ACME<span>.</span></div>
+          <span class="badge">
+            <span aria-hidden="true">🔧</span>
+            <span>Admin • <strong>Pin</strong></span>
+          </span>
+        </div>
+
+        <!-- Right: buttons -->
+        <div class="header-right">
+          <span class="badge" id="adminBadge">Admin</span>
+          <button id="backBtn" class="btn secondary" type="button">Back</button>
+          <button id="logoutBtn" class="btn secondary" type="button">Logout</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main layout (same shell pattern as app.html) -->
+    <main>
+      <div class="container shell">
+
+        <!-- Sidebar -->
+        <aside class="card sidebar">
+          <div class="nav" role="navigation" aria-label="Admin navigation">
+            <button class="active" data-view="llm">
+              <span>LLM Settings</span>
+              <span class="count">⚙</span>
+            </button>
+
+            <button data-view="rag">
+              <span>RAG Settings</span>
+              <span class="count">📚</span>
+            </button>
+
+            <button data-view="flows">
+              <span>Flow Rules</span>
+              <span class="count">🧭</span>
+            </button>
+
+            <button data-view="audit">
+              <span>Audit Log</span>
+              <span class="count">📝</span>
+            </button>
+          </div>
+        </aside>
+
+        <!-- Main panel -->
+        <section class="card main">
+          <!-- admin.js injects content here -->
+          <div class="panel" id="adminPanel"></div>
+        </section>
+
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+      <div class="container footer-inner">
+        <div class="footer-left">
+          <div class="small"><strong>Meta</strong>: Project <span class="mono">Pin</span> • Admin UI • Build: <span class="mono" id="buildDate"></span></div>
+          <div class="small">Storage: <span class="mono">localStorage</span> • Auth: <span class="mono">stub</span></div>
+        </div>
+        <div class="footer-right">
+          <div class="small"><strong>ACME IT</strong> Help Desk: (555) 010-4242 • helpdesk@acme.example</div>
+          <div class="small">© <span id="year"></span> ACME Corporation</div>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  <script src="./admin.js"></script>
+</body>
+</html>

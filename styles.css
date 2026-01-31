@@ -169,6 +169,14 @@ footer{
   justify-content:space-between;
   gap:16px;
 }
+    .mascot-caption .pin-logo img {
+        width: 50px !important;
+        max-width: 50px !important;
+        height: auto !important;
+        margin: 0 !important;
+        filter: none !important;
+        display: inline-block !important;
+    }
 .login-form{
   padding:26px;
   display:flex;
@@ -185,6 +193,25 @@ footer{
 .sub{
   color:var(--muted);
   margin:0 0 18px;
+}
+/* PIN Logo (icon-sized) */
+.pin-logo {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+}
+
+    .pin-logo img {
+        width: 50px; /* icon size */
+        height: auto;
+        flex-shrink: 0;
+    }
+
+.pin-word {
+    font-weight: 800;
+    letter-spacing: .14em;
+    font-size: 14px;
 }
 
 /* App layout */

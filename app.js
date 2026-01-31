@@ -43,22 +43,16 @@
     window.location.href = "./login.html";
   };
   $("#logoutBtn").addEventListener("click", logout);
-  // ---- Admin button wiring (simple + safe for prototype) ----
-// Only show Admin if the user is in IT and has an @acme.com email.
+  
+// ---- Admin button wiring (prototype) ----
 const adminBtn = document.getElementById("adminBtn");
 if (adminBtn) {
-  const isAdmin =
-    session?.dept === "IT" &&
-    /@acme\.com$/i.test(session?.email || "");
-
-  // Show/hide the Admin button
-  adminBtn.style.display = isAdmin ? "inline-flex" : "none";
-
-  // Send admin users to admin.html
+  adminBtn.style.display = "inline-flex";
   adminBtn.addEventListener("click", () => {
     window.location.href = "./admin.html";
   });
 }
+
 
   // Counts
   const counts = () => {

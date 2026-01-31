@@ -5,13 +5,7 @@
     return;
   }
 
-  // Admin rule: IT + @acme.com
-  const isAdmin = (session.dept === "IT") && /@acme\.com$/i.test(session.email || "");
-  if (!isAdmin) {
-    alert("Admin access denied.");
-    window.location.href = "./app.html";
-    return;
-  }
+  // Admin rule: Any authenticated user may access admin
 
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -20,7 +14,7 @@
   const now = new Date();
   $("#year").textContent = String(now.getFullYear());
   $("#buildDate").textContent = now.toISOString();
-  $("#adminBadge").textContent = `${session.email} • ${session.dept}`;
+  $("#adminBadge").textContent = `${session.email} • admin`;
 
   // Buttons
   $("#backBtn").addEventListener("click", () => window.location.href = "./app.html");

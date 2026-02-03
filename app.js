@@ -505,4 +505,45 @@ if (adminBtn) {
   counts();
   renderKpis();
   route(state.view || "newIssue");
+
+  // QUICK TEST: FastAPI chat route
+(async () => {
+  try {
+    const userMessage = prompt("Type a message to send to the backend:");
+
+    if (!userMessage) {
+      console.log("No message entered.");
+      return;
+    }
+
+    console.log("Sending:", userMessage);
+
+    const response = await fetch("http://127.0.0.1:8000/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: userMessage })
+    });
+
+    const data = await response.json();
+    console.log("Backend reply:", data.reply);
+  } catch (error) {
+    console.error("Chat test failed:", error);
+  }
+})();
+
+// QUICK TEST: FastAPI tickets route
+(async () => {
+  try {
+    console.log("Fetching tickets from backend...");
+
+    const response = await fetch("http://127.0.0.1:8000/tickets");
+    const tickets = await response.json();
+
+    console.log("Tickets received from backend:");
+    console.table(tickets);
+  } catch (error) {
+    console.error("Tickets route test failed:", error);
+  }
+})();
+  
 })();

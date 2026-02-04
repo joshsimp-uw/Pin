@@ -11,3 +11,7 @@ cd backend
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+
+Once these commands are succesfully completed use the command: uvicorn main:app --reload to start up your FastAPI server.
+
+I have created some API route tests on app.js so when you load app.html you should be seeing successful console output from the chat and ticket route.

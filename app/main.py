@@ -6,6 +6,8 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 
 from app.core.config import settings
+from app.core.db import init_schema
+from app.core.repository import ensure_org, ensure_user, insert_message, insert_ticket
 from app.core.session import SessionState, load_session, new_session, save_session
 from app.flows.engine import question_for, registry, next_missing_field
 from app.llm.providers import LLMError, get_llm
@@ -14,6 +16,12 @@ from app.policies.guardrails import check_response, should_escalate
 from app.rag.index import load_index, retrieve
 
 app = FastAPI(title=settings.app_name)
+
+
+@app.on_event("startup")
+def _startup() -> None:
+    # Create/upgrade schema for this org site's SQLite database.
+    init_schema()
 
 
 def _extract_kv(message: str) -> dict[str, str]:
@@ -114,14 +122,18 @@ def health() -> dict[str, str]:
 
 @app.post("/session/new")
 def create_session() -> dict[str, str]:
-    s = new_session()
+    s = new_session(org_id='demo-org', user_id='demo-user')
     return {"session_id": s.session_id}
 
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
+    # Ensure org/user exist (idempotent). In a per-org DB deployment, org_id is typically constant.
+    ensure_org(req.org_id, name=req.org_id)
+    ensure_user(org_id=req.org_id, user_id=req.user_id)
+
     # Load or create session
-    state = load_session(req.session_id) if req.session_id else new_session()
+    state = load_session(req.session_id) if req.session_id else new_session(org_id=req.org_id, user_id=req.user_id)
     state.turns += 1
 
     # Categorize once (sticky)
@@ -133,10 +145,15 @@ async def chat(req: ChatRequest):
     # Merge user/context info into collected fields
     _merge_collected(state, req)
 
+    # Persist user message (chat transcript)
+    insert_message(session_id=state.session_id, role='user', content=req.message)
+
     # Gate: required fields
     missing = next_missing_field(flow, state.collected)
     if missing:
         q = question_for(flow, missing)
+        # Persist assistant prompt/question
+        insert_message(session_id=state.session_id, role='assistant', content=q)
         save_session(state)
         return AnswerResponse(
             message=q,
@@ -170,6 +187,21 @@ async def chat(req: ChatRequest):
             citations=citations,
         )
         rendered = _render_ticket(ticket)
+        insert_ticket(
+            org_id=req.org_id,
+            user_id=req.user_id,
+            session_id=state.session_id,
+            summary=ticket.summary,
+            category=ticket.category,
+            impact=ticket.impact,
+            urgency=ticket.urgency,
+            escalation_reason=ticket.escalation_reason,
+            rendered_text=rendered,
+            diagnostics=ticket.diagnostics,
+            steps_attempted=ticket.steps_attempted,
+            citations=[c.model_dump() for c in ticket.citations],
+        )
+        insert_message(session_id=state.session_id, role='assistant', content=rendered)
         save_session(state)
         return TicketResponse(ticket=ticket, rendered=rendered)
 
@@ -213,8 +245,24 @@ async def chat(req: ChatRequest):
             citations=citations,
         )
         rendered = _render_ticket(ticket)
+        insert_ticket(
+            org_id=req.org_id,
+            user_id=req.user_id,
+            session_id=state.session_id,
+            summary=ticket.summary,
+            category=ticket.category,
+            impact=ticket.impact,
+            urgency=ticket.urgency,
+            escalation_reason=ticket.escalation_reason,
+            rendered_text=rendered,
+            diagnostics=ticket.diagnostics,
+            steps_attempted=ticket.steps_attempted,
+            citations=[c.model_dump() for c in ticket.citations],
+        )
+        insert_message(session_id=state.session_id, role='assistant', content=rendered)
         save_session(state)
         return TicketResponse(ticket=ticket, rendered=rendered)
 
+    insert_message(session_id=state.session_id, role='assistant', content=content, citations=[c.model_dump() for c in citations])
     save_session(state)
     return AnswerResponse(message=content, citations=citations, collected=state.collected)

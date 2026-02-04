@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     kb_dir: str = "knowledge"
     rag_index_path: str = "data/rag_index.pkl"
     flow_config_path: str = "configs/flows.yaml"
-    sqlite_path: str = "data/sessions.sqlite3"
+    sqlite_path: str = "data/pin.db"
 
     # RAG
     rag_top_k: int = 5

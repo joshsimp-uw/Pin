@@ -1,89 +1,100 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import uuid
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
-from app.core.config import settings
+from app.core.db import connect
 
 
 @dataclass
 class SessionState:
     session_id: str
+    org_id: str
+    user_id: str
     turns: int
     category: str | None
+    status: str
     collected: dict[str, Any]
     steps_attempted: list[str]
 
 
-def _conn() -> sqlite3.Connection:
-    Path(settings.sqlite_path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(settings.sqlite_path)
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS sessions (
-            session_id TEXT PRIMARY KEY,
-            turns INTEGER NOT NULL,
-            category TEXT,
-            collected_json TEXT NOT NULL,
-            steps_attempted_json TEXT NOT NULL
-        )
-        """
-    )
-    conn.commit()
-    return conn
-
-
-def new_session() -> SessionState:
+def new_session(*, org_id: str, user_id: str) -> SessionState:
     sid = str(uuid.uuid4())
-    state = SessionState(session_id=sid, turns=0, category=None, collected={}, steps_attempted=[])
+    state = SessionState(
+        session_id=sid,
+        org_id=org_id,
+        user_id=user_id,
+        turns=0,
+        category=None,
+        status="open",
+        collected={},
+        steps_attempted=[],
+    )
     save_session(state)
     return state
 
 
 def load_session(session_id: str) -> SessionState:
-    conn = _conn()
-    cur = conn.execute(
-        "SELECT session_id, turns, category, collected_json, steps_attempted_json FROM sessions WHERE session_id=?",
-        (session_id,),
-    )
-    row = cur.fetchone()
-    if not row:
-        # Unknown session -> create a new one using the requested id
-        state = SessionState(session_id=session_id, turns=0, category=None, collected={}, steps_attempted=[])
-        save_session(state)
-        return state
+    conn = connect()
+    try:
+        cur = conn.execute(
+            """
+            SELECT session_id, org_id, user_id, turns, category, status, collected_json, steps_attempted_json
+            FROM sessions
+            WHERE session_id=?
+            """,
+            (session_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise KeyError(session_id)
 
-    return SessionState(
-        session_id=row[0],
-        turns=int(row[1]),
-        category=row[2],
-        collected=json.loads(row[3]),
-        steps_attempted=json.loads(row[4]),
-    )
+        return SessionState(
+            session_id=row["session_id"],
+            org_id=row["org_id"],
+            user_id=row["user_id"],
+            turns=int(row["turns"]),
+            category=row["category"],
+            status=row["status"],
+            collected=json.loads(row["collected_json"]),
+            steps_attempted=json.loads(row["steps_attempted_json"]),
+        )
+    finally:
+        conn.close()
 
 
 def save_session(state: SessionState) -> None:
-    conn = _conn()
-    conn.execute(
-        """
-        INSERT INTO sessions(session_id, turns, category, collected_json, steps_attempted_json)
-        VALUES(?,?,?,?,?)
-        ON CONFLICT(session_id) DO UPDATE SET
-          turns=excluded.turns,
-          category=excluded.category,
-          collected_json=excluded.collected_json,
-          steps_attempted_json=excluded.steps_attempted_json
-        """,
-        (
-            state.session_id,
-            int(state.turns),
-            state.category,
-            json.dumps(state.collected),
-            json.dumps(state.steps_attempted),
-        ),
-    )
-    conn.commit()
+    conn = connect()
+    try:
+        conn.execute(
+            """
+            INSERT INTO sessions(
+              session_id, org_id, user_id, turns, category, status, collected_json, steps_attempted_json, updated_at
+            )
+            VALUES(?,?,?,?,?,?,?,?, datetime('now'))
+            ON CONFLICT(session_id) DO UPDATE SET
+              org_id=excluded.org_id,
+              user_id=excluded.user_id,
+              turns=excluded.turns,
+              category=excluded.category,
+              status=excluded.status,
+              collected_json=excluded.collected_json,
+              steps_attempted_json=excluded.steps_attempted_json,
+              updated_at=datetime('now')
+            """,
+            (
+                state.session_id,
+                state.org_id,
+                state.user_id,
+                int(state.turns),
+                state.category,
+                state.status,
+                json.dumps(state.collected),
+                json.dumps(state.steps_attempted),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()

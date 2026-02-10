@@ -1,0 +1,15 @@
+Make sure you cd into wherever the backend folder is on your PC.
+
+Windows:
+cd backend
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+
+Mac:
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+Once these commands are succesfully completed use the command: uvicorn main:app --reload to start up your FastAPI server.

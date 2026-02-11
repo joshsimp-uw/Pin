@@ -13,3 +13,5 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 Once these commands are succesfully completed use the command: uvicorn main:app --reload to start up your FastAPI server.
+
+You will also need to go into the .env file within the backend folder and add in the API key, replace your_api_key_here filler text with the actual key.

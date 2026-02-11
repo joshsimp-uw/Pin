@@ -300,7 +300,7 @@ footer{
 }
 .main-grid{
   display:grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: 2.2fr 0.8fr; /* wider chat, smaller context */
   gap:16px;
 }
 @media (max-width: 1100px){
@@ -315,7 +315,8 @@ footer{
   display:flex;
   flex-direction:column;
   gap:10px;
-  height:520px;
+  height:calc(100vh - 56px - 52px - 32px - 170px);
+  min-height:520px;
 }
 .chat-log{
   flex:1;
@@ -370,3 +371,10 @@ footer{
 }
 .kpi .label{font-size:12px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.08em}
 .kpi .value{font-size:14px;margin-top:4px}
+/* Improve chat message readability */
+.msg-text{
+  white-space: pre-wrap;   /* keeps line breaks */
+  word-break: break-word;  /* prevents overflow */
+  line-height: 1.35;
+}
+

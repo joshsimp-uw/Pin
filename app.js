@@ -167,38 +167,71 @@ if (adminBtn) {
       }
     };
 
-    const addBotFollowUp = () => {
-      const chat = state.chats.find(c => c.id === state.selectedChatId);
-      if (!chat) return;
+    //Function to link chat UI with FastAPI backened
+    const send = async () => {
 
-      // Demo follow-up: a small decision tree stub
-      const last = chat.messages.filter(m => m.role === "user").at(-1)?.text?.toLowerCase() || "";
-      let prompt = "Got it. What device are you on, and what error message (exact text) do you see?";
-      if (last.includes("vpn")) prompt = "VPN issue — which client (AnyConnect, GlobalProtect, Windows built-in) and are you offsite? Any error code?";
-      if (last.includes("email")) prompt = "Email issue — is this Outlook, OWA, or mobile? Are you seeing a password prompt, or messages stuck sending?";
-      if (last.includes("printer")) prompt = "Printer issue — what’s the printer name/IP and what exactly fails (release, print, or connection)?";
-
-      chat.messages.push({ role: "bot", text: prompt, ts: new Date().toISOString() });
-      saveState();
-      renderChat();
-    };
-
-    const send = () => {
+      //Grabs the user input
       const textArea = $("#chatText");
       const text = textArea.value.trim();
+
+      //If user submits nothing exit function (i.e dont call Gemini with no input)
       if (!text) return;
 
+      //Keeps messages tied to the correct chat
       const chat = state.chats.find(c => c.id === state.selectedChatId);
       if (!chat) return;
 
+      // Add user message to state
       chat.messages.push({ role: "user", text, ts: new Date().toISOString() });
+      
+      //Set chat name preview
       setChatNameFromFirstUserMessage(text);
+
+      //Render UI
       saveState();
       counts();
       renderKpis();
       renderChat();
+
+      //Clear input box after entry is sent
       textArea.value = "";
-      addBotFollowUp();
+
+      //Gemini call
+      try {
+        //Send message to FastAPI
+        const response = await fetch("http://localhost:8000/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ message: text })
+        });
+      
+        if (!response.ok) {
+          throw new Error("Gemini API error");
+        }
+
+        //Parse Gemini output into json format
+        const data = await response.json();
+
+        // Add Gemini reply to chat
+        chat.messages.push({
+          role: "bot",
+          text: data.reply,
+          ts: new Date().toISOString()
+        });
+
+      } catch (err) {
+        console.error(err);
+        chat.messages.push({
+          role: "bot",
+          text: "Sorry — I ran into an issue contacting the assistant.",
+          ts: new Date().toISOString()
+        });
+      }
+
+      saveState();
+      renderChat();
     };
 
     $("#sendBtn").addEventListener("click", send);

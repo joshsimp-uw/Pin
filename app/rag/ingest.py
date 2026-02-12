@@ -1,42 +1,16 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
-"""Ingest Knowledge Base files into SQLite + sqlite-vec.
-
-Reads structured markdown files (Markdown + YAML front matter) and/or pure YAML
-KB files and builds:
-  - kb_documents (doc metadata)
-  - kb_chunks    (chunked KB text)
-  - kb_vec       (sqlite-vec KNN index)
-
-Usage:
-  python scripts/ingest_kb.py
-  python scripts/ingest_kb.py --kb knowledge
-
-Req:
-  - TIER1_GEMINI_API_KEY must be set
-  - pip install sqlite-vec
-"""
-
-import argparse
-import asyncio
 import hashlib
 import json
 import re
 import struct
-import sys
 from dataclasses import dataclass
-from pathlib import Path as _Path
-
-
-# Ensure repo root import works when run from anywhere
-sys.path.insert(0, str(_Path(__file__).resolve().parents[1]))
+from pathlib import Path
 
 import yaml
 
-from app.core.config import settings
-from app.rag.vec_store import connect_vec, ensure_vec_schema
 from app.llm.gemini import embed_texts
+from app.rag.vec_store import connect_vec, ensure_vec_schema
 
 
 @dataclass
@@ -55,17 +29,8 @@ def _stable_id(*parts: str) -> str:
 
 
 def _split_front_matter(text: str) -> tuple[dict, str]:
-    """Parse YAML front matter from a markdown string.
-
-    If no front matter is present, returns ({}, original_text).
-    """
     if not text.startswith("---"):
         return {}, text
-    # Find the second --- delimiter
-    m = re.search(r"^---\s*$", text, re.MULTILINE)
-    if not m:
-        return {}, text
-    # first delimiter is at 0; find next delimiter after first line
     parts = text.split("---", 2)
     if len(parts) < 3:
         return {}, text
@@ -78,11 +43,6 @@ def _split_front_matter(text: str) -> tuple[dict, str]:
 
 
 def _chunk_markdown_by_h2(md: str) -> list[tuple[str, str]]:
-    """Chunk markdown into (section_title, section_text) blocks using H2 headings.
-
-    - Keeps all content under each ## heading together.
-    - If there are no H2 headings, returns a single chunk.
-    """
     lines = md.splitlines()
     section_title = "Overview"
     buf: list[str] = []
@@ -100,45 +60,42 @@ def _chunk_markdown_by_h2(md: str) -> list[tuple[str, str]]:
             flush()
             section_title = line[3:].strip() or "Section"
             continue
-        # Skip top-level H1 heading in the body chunk
         if line.startswith("# "):
             continue
         buf.append(line)
-
     flush()
     return out
 
 
-def _load_yaml_kb(fp: _Path) -> tuple[DocMeta, list[tuple[str, str]]]:
-    data = yaml.safe_load(fp.read_text(encoding="utf-8", errors="ignore")) or {}
-    category = str(data.get("category") or fp.parent.name)
-    title = str(data.get("title") or fp.stem.replace("_", " "))
-    doc_id = str(data.get("doc_id") or f"KB-{_stable_id(fp.as_posix())}")
-    service = data.get("service")
-    tags = list(data.get("tags") or [])
-    meta = DocMeta(
-        doc_id=doc_id,
-        title=title,
-        service=str(service) if service else None,
-        category=category,
-        tags=[str(t) for t in tags],
-        source_path=fp.as_posix(),
-    )
+def load_kb_file(fp: Path) -> tuple[DocMeta, list[tuple[str, str]]]:
+    if fp.suffix.lower() in (".yaml", ".yml"):
+        data = yaml.safe_load(fp.read_text(encoding="utf-8", errors="ignore")) or {}
+        category = str(data.get("category") or fp.parent.name)
+        title = str(data.get("title") or fp.stem.replace("_", " "))
+        doc_id = str(data.get("doc_id") or f"KB-{_stable_id(fp.as_posix())}")
+        service = data.get("service")
+        tags = list(data.get("tags") or [])
+        meta = DocMeta(
+            doc_id=doc_id,
+            title=title,
+            service=str(service) if service else None,
+            category=category,
+            tags=[str(t) for t in tags],
+            source_path=fp.as_posix(),
+        )
 
-    sections: list[tuple[str, str]] = []
-    for s in data.get("sections") or []:
-        heading = str(s.get("heading") or "Section")
-        body = str(s.get("body") or "").strip()
-        if body:
-            sections.append((heading, body))
-    if not sections:
-        body = str(data.get("body") or "").strip()
-        if body:
-            sections = [("Overview", body)]
-    return meta, sections
+        sections: list[tuple[str, str]] = []
+        for s in data.get("sections") or []:
+            heading = str(s.get("heading") or "Section")
+            body = str(s.get("body") or "").strip()
+            if body:
+                sections.append((heading, body))
+        if not sections:
+            body = str(data.get("body") or "").strip()
+            if body:
+                sections = [("Overview", body)]
+        return meta, sections
 
-
-def _load_markdown_kb(fp: _Path) -> tuple[DocMeta, list[tuple[str, str]]]:
     raw = fp.read_text(encoding="utf-8", errors="ignore")
     fm, body = _split_front_matter(raw)
     category = str(fm.get("category") or fp.parent.name)
@@ -154,12 +111,10 @@ def _load_markdown_kb(fp: _Path) -> tuple[DocMeta, list[tuple[str, str]]]:
         tags=[str(t) for t in tags],
         source_path=fp.as_posix(),
     )
-    sections = _chunk_markdown_by_h2(body)
-    return meta, sections
+    return meta, _chunk_markdown_by_h2(body)
 
 
 def _upsert_documents_and_chunks(conn, docs: list[tuple[DocMeta, list[tuple[str, str]]]]) -> list[tuple[str, str]]:
-    """Insert documents + chunks, returning list of (chunk_id, chunk_text)."""
     chunk_payloads: list[tuple[str, str]] = []
     for meta, sections in docs:
         conn.execute(
@@ -179,6 +134,7 @@ def _upsert_documents_and_chunks(conn, docs: list[tuple[DocMeta, list[tuple[str,
 
         for section_title, text in sections:
             chunk_id = f"{meta.doc_id}:{_stable_id(meta.doc_id, section_title, meta.source_path)}"
+            clean = text.strip()
             conn.execute(
                 """
                 INSERT INTO kb_chunks(chunk_id, doc_id, section_title, heading_path, text)
@@ -190,45 +146,31 @@ def _upsert_documents_and_chunks(conn, docs: list[tuple[DocMeta, list[tuple[str,
                   text=excluded.text,
                   updated_at=datetime('now')
                 """,
-                (chunk_id, meta.doc_id, section_title, section_title, text.strip()),
+                (chunk_id, meta.doc_id, section_title, section_title, clean),
             )
-            chunk_payloads.append((chunk_id, f"{meta.title} — {section_title}\n\n{text.strip()}"))
-
+            chunk_payloads.append((chunk_id, f"{meta.title} — {section_title}\n\n{clean}"))
     return chunk_payloads
 
 
-async def _run(kb_dir: _Path) -> None:
+async def ingest_kb_dir(kb_dir: Path) -> dict[str, int]:
     files = sorted(list(kb_dir.glob("**/*.md")) + list(kb_dir.glob("**/*.yaml")) + list(kb_dir.glob("**/*.yml")))
-    if not files:
-        raise SystemExit(f"No KB files found under: {kb_dir.resolve()}")
-
-    docs: list[tuple[DocMeta, list[tuple[str, str]]]] = []
-    for fp in files:
-        if fp.suffix.lower() in (".yaml", ".yml"):
-            docs.append(_load_yaml_kb(fp))
-        else:
-            docs.append(_load_markdown_kb(fp))
+    docs = [load_kb_file(fp) for fp in files]
 
     conn = connect_vec()
     try:
         ensure_vec_schema(conn)
-        # sqlite JSON helper is available in modern SQLite; schema uses json(...) in places
         conn.execute("BEGIN")
         chunk_payloads = _upsert_documents_and_chunks(conn, docs)
         conn.commit()
 
-        # Embed in batches to reduce API calls.
         texts = [t for _, t in chunk_payloads]
         batch_size = 16
         embeddings: list[list[float]] = []
         for i in range(0, len(texts), batch_size):
             embeddings.extend(await embed_texts(texts[i : i + batch_size]))
 
-        # Upsert into sqlite-vec
-        vec_rows = [(chunk_id, emb) for (chunk_id, _), emb in zip(chunk_payloads, embeddings)]
-        # Reuse the existing connection for speed
         cur = conn.cursor()
-        for chunk_id, emb in vec_rows:
+        for (chunk_id, _), emb in zip(chunk_payloads, embeddings):
             cur.execute(
                 "INSERT OR REPLACE INTO kb_vec(chunk_id, embedding) VALUES (?, ?)",
                 (chunk_id, struct.pack("%sf" % len(emb), *emb)),
@@ -237,25 +179,8 @@ async def _run(kb_dir: _Path) -> None:
     finally:
         conn.close()
 
-    print(f"Ingested {len(docs)} docs from {len(files)} files")
-    print(f"Embedded+indexed {len(chunk_payloads)} chunks")
-    print(f"DB: {settings.sqlite_path}")
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Ingest KB into SQLite + sqlite-vec")
-    parser.add_argument("--kb", default=settings.kb_dir, help="KB directory")
-    args = parser.parse_args()
-
-    kb_dir = _Path(args.kb)
-    if not kb_dir.exists():
-        raise SystemExit(f"KB dir not found: {kb_dir.resolve()}")
-
-    if not settings.gemini_api_key:
-        raise SystemExit("TIER1_GEMINI_API_KEY is required to ingest embeddings")
-
-    asyncio.run(_run(kb_dir))
-
-
-if __name__ == "__main__":
-    main()
+    return {
+        "files": len(files),
+        "docs": len(docs),
+        "chunks": len(chunk_payloads),
+    }

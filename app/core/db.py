@@ -32,6 +32,24 @@ def init_schema(schema_path: str = "data/schema.sql") -> None:
     sql = sql_path.read_text(encoding="utf-8")
     conn = connect()
     try:
+        # Schema includes sqlite-vec virtual tables. Load the extension for this
+        # connection if available.
+        try:
+            conn.enable_load_extension(True)
+            import sqlite_vec  # type: ignore
+
+            sqlite_vec.load(conn)
+        except Exception as e:
+            raise RuntimeError(
+                "Failed to load sqlite-vec extension required by the schema. "
+                "Install 'sqlite-vec' and ensure your sqlite3 build supports extension loading."
+            ) from e
+        finally:
+            try:
+                conn.enable_load_extension(False)
+            except Exception:
+                pass
+
         conn.executescript(sql)
         conn.commit()
     finally:

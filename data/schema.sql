@@ -130,3 +130,40 @@ CREATE TABLE IF NOT EXISTS tickets (
 );
 CREATE INDEX IF NOT EXISTS idx_tickets_org_status ON tickets(org_id, status);
 CREATE INDEX IF NOT EXISTS idx_tickets_session ON tickets(session_id);
+
+-- ==============================
+-- Knowledge Base (RAG)
+-- ==============================
+
+-- Document-level metadata
+CREATE TABLE IF NOT EXISTS kb_documents (
+  doc_id         TEXT PRIMARY KEY,
+  category       TEXT NOT NULL,          -- folder name (iam, email, remote_access, ...)
+  title          TEXT NOT NULL,
+  service        TEXT,
+  tags_json      TEXT NOT NULL DEFAULT '[]',
+  source_path    TEXT NOT NULL,
+  updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_kb_documents_category ON kb_documents(category);
+
+-- Chunked text (what we actually stuff into the LLM prompt)
+CREATE TABLE IF NOT EXISTS kb_chunks (
+  chunk_id       TEXT PRIMARY KEY,
+  doc_id         TEXT NOT NULL,
+  section_title  TEXT NOT NULL,
+  heading_path   TEXT NOT NULL DEFAULT '',
+  text           TEXT NOT NULL,
+  updated_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (doc_id) REFERENCES kb_documents(doc_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_kb_chunks_doc ON kb_chunks(doc_id);
+
+-- Vector index (sqlite-vec). This is a virtual table.
+-- NOTE: This requires sqlite-vec extension to be loaded in the SQLite connection.
+-- The embedding dimension must match TIER1_RAG_EMBEDDING_DIM (default 768).
+-- If you change the dimension, drop + recreate this table and re-ingest.
+CREATE VIRTUAL TABLE IF NOT EXISTS kb_vec USING vec0(
+  chunk_id TEXT PRIMARY KEY,
+  embedding float[768] distance_metric=cosine
+);

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 
 from app.core.config import settings
 from app.core.db import init_schema
@@ -13,9 +14,18 @@ from app.flows.engine import question_for, registry, next_missing_field
 from app.llm.providers import LLMError, get_llm
 from app.models.schemas import AnswerResponse, ChatRequest, ChatResponse, Ticket, TicketResponse
 from app.policies.guardrails import check_response, should_escalate
-from app.rag.index import load_index, retrieve
+from app.rag.index import retrieve
+from app.rag.ingest import ingest_kb_dir
+from app.rag.vec_store import connect_vec
 
 app = FastAPI(title=settings.app_name)
+
+
+def _require_admin(x_admin_token: str | None) -> None:
+    if not settings.admin_token:
+        raise HTTPException(status_code=500, detail="Admin token is not configured on the server")
+    if not x_admin_token or x_admin_token != settings.admin_token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 @app.on_event("startup")
@@ -120,6 +130,31 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.post("/admin/kb/reingest")
+async def admin_kb_reingest(x_admin_token: str | None = Header(default=None)) -> dict[str, int]:
+    """Re-ingest KB files from settings.kb_dir into SQLite + sqlite-vec.
+
+    Provide the token via `X-Admin-Token`.
+    """
+    _require_admin(x_admin_token)
+    stats = await ingest_kb_dir(Path(settings.kb_dir))
+    return stats
+
+
+@app.get("/admin/kb/docs")
+def admin_kb_docs(x_admin_token: str | None = Header(default=None)) -> list[dict[str, str]]:
+    """List KB documents stored in the DB."""
+    _require_admin(x_admin_token)
+    conn = connect_vec()
+    try:
+        rows = conn.execute(
+            "SELECT doc_id, category, title, source_path, updated_at FROM kb_documents ORDER BY category, title"
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
 @app.post("/session/new")
 def create_session() -> dict[str, str]:
     s = new_session(org_id='demo-org', user_id='demo-user')
@@ -162,15 +197,9 @@ async def chat(req: ChatRequest):
             collected=state.collected,
         )
 
-    # Load RAG index
-    try:
-        index = load_index()
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
     # Retrieve docs based on message + collected context
     query = req.message + "\n" + "\n".join([f"{k}: {v}" for k, v in sorted(state.collected.items())])
-    citations, best_score = retrieve(index, query)
+    citations, best_score = await retrieve(query)
 
     # Decide escalation
     esc, esc_reason = should_escalate(state.turns, best_score)

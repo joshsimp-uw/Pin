@@ -5,6 +5,7 @@ from typing import Any
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Header
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.db import init_schema
@@ -441,3 +442,13 @@ async def chat(req: ChatRequest):
     insert_message(session_id=state.session_id, role='assistant', content=content, citations=[c.model_dump() for c in citations])
     save_session(state)
     return AnswerResponse(message=content, citations=citations, collected=state.collected)
+
+
+# ---------------------------
+# Static web UI (optional)
+# ---------------------------
+_WEB_DIR = Path(__file__).resolve().parents[1] / "web"
+if _WEB_DIR.exists():
+    # Mount LAST so API routes take precedence; serves index.html at /
+    app.mount("/", StaticFiles(directory=str(_WEB_DIR), html=True), name="web")
+

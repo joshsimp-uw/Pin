@@ -33,7 +33,7 @@
 
   // --- Backend chat client ----------------------------------------------
 
-const BACKEND_BASE = "http://pin.chewlab.cc:8000";  // adjust if needed
+const BACKEND_BASE = "http://localhost:8000";  // adjust if needed
 
 /**
  * Creates a new server session and returns { session_id }.

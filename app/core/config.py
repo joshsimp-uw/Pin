@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     admin_token: str | None = None
 
     # Guardrails
-    max_turns_before_escalate: int = 6
+    max_turns_before_escalate: int = 20
     require_citations: bool = True
 
 

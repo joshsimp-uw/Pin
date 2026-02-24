@@ -31,6 +31,52 @@
 
   const state = loadState();
 
+  // --- Backend chat client ----------------------------------------------
+
+const BACKEND_BASE = "http://localhost:8000";  // adjust if needed
+
+/**
+ * Creates a new server session and returns { session_id }.
+ * Call this exactly once when you create a new chat in the UI.
+ */
+async function createServerSession() {
+  const res = await fetch(`${BACKEND_BASE}/session/new`, { method: "POST" });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`/session/new failed ${res.status}: ${txt}`);
+  }
+  return res.json(); // { session_id: string }
+}
+
+/**
+ * Sends a user message to the FastAPI /chat route and returns a string
+ * that's safe to display in the chat (answer message or ticket text).
+ */
+async function sendChatMessage({ message, session_id, org_id = "demo-org", user_id = "demo-user", context = {} }) {
+  const res = await fetch(`${BACKEND_BASE}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, session_id, org_id, user_id, context })
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`/chat failed ${res.status}: ${errText}`);
+  }
+
+  const data = await res.json();
+
+  // Normalize the text for display
+  let text = "Sorry — unexpected response from the assistant.";
+  if (data.type === "ticket")       text = data.rendered ?? text;
+  else if (data.type === "answer")  text = data.message ?? text;
+  else if (data.message)            text = data.message;
+
+  const type = (data.type === "ticket" || data.type === "answer") ? data.type : "answer";
+  return { text, type, raw: data };
+}
+
+
   // Header + footer meta
   $("#year").textContent = String(now.getFullYear());
   $("#buildDate").textContent = now.toISOString();
@@ -167,59 +213,54 @@ if (adminBtn) {
       }
     };
 
-    //Function to link chat UI with FastAPI backened
+  // Function to link chat UI with FastAPI backend
     const send = async () => {
-
-      //Grabs the user input
       const textArea = $("#chatText");
       const text = textArea.value.trim();
-
-      //If user submits nothing exit function (i.e dont call Gemini with no input)
       if (!text) return;
 
-      //Keeps messages tied to the correct chat
       const chat = state.chats.find(c => c.id === state.selectedChatId);
       if (!chat) return;
 
       // Add user message to state
       chat.messages.push({ role: "user", text, ts: new Date().toISOString() });
-      
-      //Set chat name preview
       setChatNameFromFirstUserMessage(text);
-
-      //Render UI
       saveState();
       counts();
       renderKpis();
       renderChat();
 
-      //Clear input box after entry is sent
+      // Clear input
       textArea.value = "";
 
-      //Gemini call
       try {
-        //Send message to FastAPI
-        const response = await fetch("http://localhost:8000/chat", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ message: text })
-        });
-      
-        if (!response.ok) {
-          throw new Error("Gemini API error");
+        // If we don't yet have a server session, either create one or pass null (server will create)
+        if (!chat.serverSessionId) {
+          try {
+            const { session_id } = await createServerSession();
+            chat.serverSessionId = session_id;
+            saveState();
+          } catch (e) {
+            console.warn("Proceeding without pre-created session:", e);
+          }
         }
 
-        //Parse Gemini output into json format
-        const data = await response.json();
+        // Compose optional context (these map nicely into Ticket.user/device later)
+        const context = {
+          user_email: session.email,
+          company: session.company
+          // Add device_* keys here if you have them (e.g., device_os, device_serial, etc.)
+        };
 
-        // Add Gemini reply to chat
-        chat.messages.push({
-          role: "bot",
-          text: data.reply,
-          ts: new Date().toISOString()
+        const { text: botText } = await sendChatMessage({
+          message: text,
+          session_id: chat.serverSessionId ?? null,
+          org_id: "demo-org",
+          user_id: session.email || "demo-user",
+          context
         });
+
+        chat.messages.push({ role: "bot", text: botText, ts: new Date().toISOString() });
 
       } catch (err) {
         console.error(err);

@@ -64,12 +64,22 @@ class OpenAICompatibleLLM(BaseLLM):
 
 
 def get_llm() -> BaseLLM:
-    if settings.llm_provider.lower() == "openai":
+    provider = settings.llm_provider.lower()
+    if provider == "openai":
         if not settings.openai_api_key:
             raise LLMError("TIER1_OPENAI_API_KEY is required when TIER1_LLM_PROVIDER=openai")
         return OpenAICompatibleLLM(
             api_key=settings.openai_api_key,
             model=settings.openai_model,
             base_url=settings.openai_base_url,
+        )
+    if provider == "gemini":
+        from app.llm.gemini import GeminiLLM
+
+        if not settings.gemini_api_key:
+            raise LLMError("TIER1_GEMINI_API_KEY is required when TIER1_LLM_PROVIDER=gemini")
+        return GeminiLLM(
+            api_key=settings.gemini_api_key,
+            model=settings.gemini_model,
         )
     return MockLLM()

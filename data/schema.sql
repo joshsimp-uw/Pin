@@ -165,5 +165,5 @@ CREATE INDEX IF NOT EXISTS idx_kb_chunks_doc ON kb_chunks(doc_id);
 -- If you change the dimension, drop + recreate this table and re-ingest.
 CREATE VIRTUAL TABLE IF NOT EXISTS kb_vec USING vec0(
   chunk_id TEXT PRIMARY KEY,
-  embedding float[768] distance_metric=cosine
+  embedding float[3072] distance_metric=cosine
 );

@@ -8,8 +8,10 @@ from pydantic import BaseModel, Field
 class ChatRequest(BaseModel):
     message: str
     session_id: str | None = None
-    org_id: str = "demo-org"
-    user_id: str = "demo-user"
+    # org_id/user_id are deprecated: the API derives these from the Bearer token.
+    # They remain for backward compatibility with older clients.
+    org_id: str | None = None
+    user_id: str | None = None
     # Optional: user/device context from login/LDAP/etc.
     context: dict[str, Any] = Field(default_factory=dict)
 

@@ -515,21 +515,47 @@ def admin_llm_put(authorization: str | None = Header(default=None), payload: dic
 
 
 @app.post("/session/new")
-def create_session(payload: dict = Body(default_factory=dict)) -> dict[str, str]:
-    org_id = str(payload.get("org_id") or "ACME")
-    user_id = str(payload.get("user_id") or "demo-user")
-    s = new_session(org_id=org_id, user_id=user_id)
+def create_session(authorization: str | None = Header(default=None)) -> dict[str, str]:
+    """Create a new chat session for the authenticated user."""
+    u = require_user(_bearer(authorization))
+    ensure_org(u.org_id, name=u.org_id)
+    ensure_user(
+        org_id=u.org_id,
+        user_id=u.user_id,
+        first_name=u.first_name,
+        last_name=u.last_name,
+        email=u.email,
+        role=u.role,
+    )
+    s = new_session(org_id=u.org_id, user_id=u.user_id)
     return {"session_id": s.session_id}
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest):
-    # Ensure org/user exist (idempotent). In a per-org DB deployment, org_id is typically constant.
-    ensure_org(req.org_id, name=req.org_id)
-    ensure_user(org_id=req.org_id, user_id=req.user_id)
+async def chat(req: ChatRequest, authorization: str | None = Header(default=None)):
+    """Chat with the assistant.
 
-    # Load or create session
-    state = load_session(req.session_id) if req.session_id else new_session(org_id=req.org_id, user_id=req.user_id)
+    Org/user are derived from the authenticated session (Bearer token). This prevents
+    callers from spoofing org_id/user_id and ensures RAG + LLM settings resolve
+    against the correct org configuration from the admin portal.
+    """
+    u = require_user(_bearer(authorization))
+
+    # Ensure org/user exist (idempotent). In a per-org DB deployment, org_id is typically constant.
+    ensure_org(u.org_id, name=u.org_id)
+    ensure_user(
+        org_id=u.org_id,
+        user_id=u.user_id,
+        first_name=u.first_name,
+        last_name=u.last_name,
+        email=u.email,
+        role=u.role,
+    )
+
+    # Load or create session (must belong to the authenticated user)
+    state = load_session(req.session_id) if req.session_id else new_session(org_id=u.org_id, user_id=u.user_id)
+    if state.org_id != u.org_id or state.user_id != u.user_id:
+        raise HTTPException(status_code=403, detail="Session does not belong to the current user")
     state.turns += 1
 
     # Categorize once (sticky)
@@ -569,7 +595,7 @@ async def chat(req: ChatRequest):
         ticket = Ticket(
             summary=state.collected.get("summary") or req.message.strip()[:120],
             category=state.category or "unknown",
-            user={"org_id": req.org_id, "user_id": req.user_id, **{k: v for k, v in req.context.items() if k.startswith("user_")}},
+            user={"org_id": u.org_id, "user_id": u.user_id, **{k: v for k, v in req.context.items() if k.startswith("user_")}},
             device={k: v for k, v in req.context.items() if k.startswith("device_")},
             diagnostics=state.collected,
             steps_attempted=state.steps_attempted,
@@ -579,8 +605,8 @@ async def chat(req: ChatRequest):
         )
         rendered = _render_ticket(ticket)
         insert_ticket(
-            org_id=req.org_id,
-            user_id=req.user_id,
+            org_id=u.org_id,
+            user_id=u.user_id,
             session_id=state.session_id,
             summary=ticket.summary,
             category=ticket.category,
@@ -598,7 +624,7 @@ async def chat(req: ChatRequest):
 
     # Retrieve docs based on message + collected context
     query = req.message + "\n" + "\n".join([f"{k}: {v}" for k, v in sorted(state.collected.items())])
-    citations, best_score = await retrieve(query, org_id=req.org_id)
+    citations, best_score = await retrieve(query, org_id=u.org_id)
 
     # Decide escalation
     esc, esc_reason = should_escalate(state.turns, best_score)
@@ -606,7 +632,7 @@ async def chat(req: ChatRequest):
         ticket = Ticket(
             summary=state.collected.get("summary") or req.message.strip()[:120],
             category=state.category or "unknown",
-            user={"org_id": req.org_id, "user_id": req.user_id, **{k: v for k, v in req.context.items() if k.startswith("user_")}},
+            user={"org_id": u.org_id, "user_id": u.user_id, **{k: v for k, v in req.context.items() if k.startswith("user_")}},
             device={k: v for k, v in req.context.items() if k.startswith("device_")},
             diagnostics=state.collected,
             steps_attempted=state.steps_attempted,
@@ -616,8 +642,8 @@ async def chat(req: ChatRequest):
         )
         rendered = _render_ticket(ticket)
         insert_ticket(
-            org_id=req.org_id,
-            user_id=req.user_id,
+            org_id=u.org_id,
+            user_id=u.user_id,
             session_id=state.session_id,
             summary=ticket.summary,
             category=ticket.category,
@@ -650,7 +676,7 @@ async def chat(req: ChatRequest):
         "Respond with: (1) a short diagnosis, (2) numbered steps, (3) what to report back."
     )
 
-    llm = get_llm(org_id=req.org_id)
+    llm = get_llm(org_id=u.org_id)
     try:
         content = await llm.chat([
             {"role": "system", "content": system},
@@ -664,7 +690,7 @@ async def chat(req: ChatRequest):
         ticket = Ticket(
             summary=state.collected.get("summary") or req.message.strip()[:120],
             category=state.category or "unknown",
-            user={"org_id": req.org_id, "user_id": req.user_id},
+            user={"org_id": u.org_id, "user_id": u.user_id},
             device={k: v for k, v in req.context.items() if k.startswith("device_")},
             diagnostics=state.collected,
             steps_attempted=state.steps_attempted,
@@ -674,8 +700,8 @@ async def chat(req: ChatRequest):
         )
         rendered = _render_ticket(ticket)
         insert_ticket(
-            org_id=req.org_id,
-            user_id=req.user_id,
+            org_id=u.org_id,
+            user_id=u.user_id,
             session_id=state.session_id,
             summary=ticket.summary,
             category=ticket.category,

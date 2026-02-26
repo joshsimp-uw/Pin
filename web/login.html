@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ACME IT Helpdesk — Login</title>
+  <meta name="description" content="Login to start solving your IT issues with Pin." />
+  <link rel="icon" href="./assets/pin-noticket.png" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="login-wrap">
+    <main class="login-hero">
+      <div class="container">
+        <div class="login-grid">
+          <section class="card mascot-tile" aria-label="Welcome">
+            <div class="mascot-caption">
+                <div class="pin-logo" aria-label="PIN">
+                    <img src="./assets/pin-logo.png" alt="PIN logo" />
+                    <img src="./assets/pin-wordmark.png" alt="PIN wordmark"/>
+                </div>
+            </div>
+
+            <h1 class="h1">Login to start solving your IT issues with Pin!</h1>
+            <p class="sub">
+              Demo users are pre-created for the capstone.
+            </p>
+
+            <img src="./assets/acme-logo.png" alt="ACME logo" class="acme-hero"/>
+          </section>
+
+          <section class="card login-form" aria-label="Login form">
+            <h2 style="margin:0">Sign in</h2>
+            <p class="small" style="margin:0 0 6px">Use one of the demo accounts (password: <span class="mono">Passw0rd!</span>).</p>
+
+            <label class="small" for="company">Company / Org</label>
+            <input id="company" class="input" value="ACME" autocomplete="organization" />
+
+            <div class="form-row">
+              <div>
+                <label class="small" for="email">Email</label>
+                <input id="email" class="input" placeholder="jane.doe@acme.com" autocomplete="username" />
+              </div>
+            </div>
+
+            <label class="small" for="password">Password</label>
+            <input id="password" class="input" type="password" placeholder="••••••••" autocomplete="current-password" />
+
+            <div class="form-row" style="margin-top:4px">
+              <button id="loginBtn" class="btn" type="button">Login</button>
+              <button id="resetBtn" class="btn secondary" type="button">Reset</button>
+            </div>
+
+            <div class="hr"></div>
+
+            <details class="small">
+              <summary>Demo accounts</summary>
+              <ul>
+                <li><span class="mono">john.doe@acme.com</span> (end user)</li>
+                <li><span class="mono">jane.doe@acme.com</span> (end user)</li>
+                <li><span class="mono">admin.doe@acme.com</span> (admin)</li>
+              </ul>
+            </details>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="container footer-inner">
+        <div class="footer-left">
+          <div class="small"><strong>Meta</strong>: Project <span class="mono">Pin</span> • UI Prototype • Build: <span class="mono" id="buildDate"></span></div>
+          <div class="small">Environment: <span class="mono">local</span> • Auth: <span class="mono">db</span></div>
+        </div>
+        <div class="footer-right">
+          <div class="small"><strong>ACME IT</strong> Help Desk: (555) 010-4242 • helpdesk@acme.example</div>
+          <div class="small">© <span id="year"></span> ACME Corporation</div>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <script src="./login.js"></script>
+</body>
+</html>

@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     rag_index_path: str = "data/rag_index.pkl"
     flow_config_path: str = "configs/flows.yaml"
     sqlite_path: str = "data/pin.db"
+    secret_key_path: str = "data/secret.key"  # used to encrypt stored API keys
+    secret_key: str | None = None             # optionally set via env TIER1_SECRET_KEY
 
     # RAG
     rag_top_k: int = 5

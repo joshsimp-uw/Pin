@@ -39,8 +39,12 @@ const BACKEND_BASE = "http://localhost:8000";  // adjust if needed
  * Creates a new server session and returns { session_id }.
  * Call this exactly once when you create a new chat in the UI.
  */
-async function createServerSession() {
-  const res = await fetch(`${BACKEND_BASE}/session/new`, { method: "POST" });
+async function createServerSession({ org_id, user_id }) {
+  const res = await fetch(`${BACKEND_BASE}/session/new`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ org_id, user_id })
+  });
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
     throw new Error(`/session/new failed ${res.status}: ${txt}`);
@@ -93,10 +97,14 @@ async function sendChatMessage({ message, session_id, org_id = "demo-org", user_
 // ---- Admin button wiring (prototype) ----
 const adminBtn = document.getElementById("adminBtn");
 if (adminBtn) {
-  adminBtn.style.display = "inline-flex";
-  adminBtn.addEventListener("click", () => {
-    window.location.href = "./admin.html";
-  });
+  if (session.role === "admin") {
+    adminBtn.style.display = "inline-flex";
+    adminBtn.addEventListener("click", () => {
+      window.location.href = "./admin.html";
+    });
+  } else {
+    adminBtn.style.display = "none";
+  }
 }
 
 
@@ -237,7 +245,7 @@ if (adminBtn) {
         // If we don't yet have a server session, either create one or pass null (server will create)
         if (!chat.serverSessionId) {
           try {
-            const { session_id } = await createServerSession();
+            const { session_id } = await createServerSession({ org_id: session.org_id || session.company, user_id: session.email });
             chat.serverSessionId = session_id;
             saveState();
           } catch (e) {
@@ -255,7 +263,7 @@ if (adminBtn) {
         const { text: botText } = await sendChatMessage({
           message: text,
           session_id: chat.serverSessionId ?? null,
-          org_id: "demo-org",
+          org_id: session.org_id || session.company || "ACME",
           user_id: session.email || "demo-user",
           context
         });

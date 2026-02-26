@@ -38,6 +38,55 @@ CREATE TABLE IF NOT EXISTS users (
 );
 CREATE INDEX IF NOT EXISTS idx_users_org ON users(org_id);
 CREATE INDEX IF NOT EXISTS idx_users_dept ON users(dept_id);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+-- User authentication (passwords)
+-- NOTE: Passwords are stored as PBKDF2-HMAC-SHA256 hashes with per-user salt.
+CREATE TABLE IF NOT EXISTS user_auth (
+  user_id        TEXT PRIMARY KEY,
+  password_salt  BLOB NOT NULL,
+  password_hash  BLOB NOT NULL,
+  algo           TEXT NOT NULL DEFAULT 'pbkdf2_sha256',
+  updated_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
+-- Auth sessions (simple bearer tokens)
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  token       TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL,
+  org_id      TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at  TEXT,
+  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+  FOREIGN KEY (org_id) REFERENCES orgs(org_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_org ON auth_sessions(org_id);
+
+-- App configuration (per-org)
+CREATE TABLE IF NOT EXISTS app_settings (
+  org_id     TEXT NOT NULL,
+  key        TEXT NOT NULL,
+  value_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (org_id, key),
+  FOREIGN KEY (org_id) REFERENCES orgs(org_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_app_settings_org ON app_settings(org_id);
+
+-- LLM provider configuration.
+-- Store provider-specific API keys encrypted at rest.
+CREATE TABLE IF NOT EXISTS llm_providers (
+  org_id          TEXT NOT NULL,
+  provider        TEXT NOT NULL, -- mock|openai|gemini
+  model           TEXT NOT NULL,
+  api_key_enc     TEXT,          -- encrypted (Fernet) + base64
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (org_id, provider),
+  FOREIGN KEY (org_id) REFERENCES orgs(org_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_llm_providers_org ON llm_providers(org_id);
 
 -- Assets (generalized asset record)
 CREATE TABLE IF NOT EXISTS assets (

@@ -5,12 +5,22 @@ from typing import Any
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Header
+from fastapi import Body
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
-from app.core.db import init_schema
+from app.core.db import init_schema, connect
 from app.core.repository import ensure_org, ensure_user, insert_message, insert_ticket
 from app.core.session import SessionState, load_session, new_session, save_session
+from app.core.auth import (
+    get_user_by_email,
+    issue_token,
+    require_admin,
+    require_user,
+    set_user_password,
+    verify_user_password,
+)
+from app.core.config_store import list_llm_providers, set_setting, upsert_llm_provider, get_setting
 from app.flows.engine import question_for, registry, next_missing_field
 from app.llm.providers import LLMError, get_llm
 from app.models.schemas import AnswerResponse, ChatRequest, ChatResponse, Ticket, TicketResponse
@@ -41,10 +51,29 @@ def _require_admin(x_admin_token: str | None) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+def _bearer(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    if authorization.lower().startswith("bearer "):
+        return authorization.split(" ", 1)[1].strip() or None
+    return None
+
+
 @app.on_event("startup")
 def _startup() -> None:
     # Create/upgrade schema for this org site's SQLite database.
     init_schema()
+
+    # Seed demo org + users (idempotent). These are required for the capstone demo.
+    demo_org = "ACME"
+    ensure_org(demo_org, name="ACME")
+    # User IDs are emails for simplicity.
+    ensure_user(org_id=demo_org, user_id="john.doe@acme.com", first_name="John", last_name="Doe", email="john.doe@acme.com", role="end_user")
+    ensure_user(org_id=demo_org, user_id="jane.doe@acme.com", first_name="Jane", last_name="Doe", email="jane.doe@acme.com", role="end_user")
+    ensure_user(org_id=demo_org, user_id="admin.doe@acme.com", first_name="Admin", last_name="Doe", email="admin.doe@acme.com", role="admin")
+    # Set/update their passwords.
+    for uid in ["john.doe@acme.com", "jane.doe@acme.com", "admin.doe@acme.com"]:
+        set_user_password(user_id=uid, password="Passw0rd!")
 
 
 def _extract_kv(message: str) -> dict[str, str]:
@@ -302,9 +331,155 @@ def admin_kb_docs(x_admin_token: str | None = Header(default=None)) -> list[dict
         conn.close()
 
 
+# ===========================
+# Auth + Bootstrap + Admin UI
+# ===========================
+
+
+@app.get("/api/bootstrap/status")
+def bootstrap_status(org_id: str = "ACME") -> dict[str, bool]:
+    """Return whether the org DB has been initialized via the setup page."""
+    ensure_org(org_id, name=org_id)
+    initialized = bool(get_setting(org_id, "initialized"))
+    # Also treat "initialized" as true if there is any admin user.
+    conn = connect()
+    try:
+        row = conn.execute("SELECT 1 FROM users WHERE org_id=? AND role='admin' LIMIT 1", (org_id,)).fetchone()
+        if row:
+            initialized = True
+    finally:
+        conn.close()
+    return {"initialized": initialized}
+
+
+@app.post("/api/bootstrap/setup")
+def bootstrap_setup(payload: dict = Body(...)) -> dict[str, str]:
+    """One-time setup for a new DB: create an admin user and initial LLM config."""
+    org_id = str(payload.get("org_id") or "ACME").strip() or "ACME"
+    org_name = str(payload.get("org_name") or org_id).strip() or org_id
+    admin_email = str(payload.get("admin_email") or "").strip()
+    admin_first = str(payload.get("admin_first") or "Admin").strip() or "Admin"
+    admin_last = str(payload.get("admin_last") or "").strip() or None
+    password = str(payload.get("password") or "").strip()
+    llm_provider = str(payload.get("llm_provider") or "mock").strip().lower()
+    llm_model = str(payload.get("llm_model") or "").strip() or ("gpt-4o-mini" if llm_provider == "openai" else "gemini-1.5-flash")
+    llm_api_key = str(payload.get("llm_api_key") or "").strip() or None
+
+    if not admin_email or not password:
+        raise HTTPException(status_code=400, detail="admin_email and password are required")
+
+    # Abort if already initialized.
+    if get_setting(org_id, "initialized"):
+        raise HTTPException(status_code=409, detail="Already initialized")
+
+    ensure_org(org_id, name=org_name)
+    ensure_user(
+        org_id=org_id,
+        user_id=admin_email,
+        first_name=admin_first,
+        last_name=admin_last,
+        email=admin_email,
+        role="admin",
+    )
+    set_user_password(user_id=admin_email, password=password)
+
+    # Ensure LLM provider rows exist; store key encrypted if provided.
+    if llm_provider not in {"mock", "openai", "gemini"}:
+        llm_provider = "mock"
+    upsert_llm_provider(org_id=org_id, provider=llm_provider, model=llm_model, api_key_plain=llm_api_key)
+    set_setting(org_id, "active_llm", {"provider": llm_provider})
+    set_setting(org_id, "initialized", True)
+    return {"status": "ok"}
+
+
+@app.post("/auth/login")
+def auth_login(payload: dict = Body(...)) -> dict:
+    org_id = str(payload.get("org_id") or "ACME").strip() or "ACME"
+    email = str(payload.get("email") or "").strip()
+    password = str(payload.get("password") or "").strip()
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="email and password are required")
+    ensure_org(org_id, name=org_id)
+
+    u = get_user_by_email(org_id=org_id, email=email)
+    if not u:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not verify_user_password(user_id=u.user_id, password=password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    token = issue_token(org_id=org_id, user_id=u.user_id)
+    return {
+        "token": token,
+        "user": {
+            "user_id": u.user_id,
+            "org_id": u.org_id,
+            "email": u.email,
+            "first_name": u.first_name,
+            "last_name": u.last_name,
+            "role": u.role,
+        },
+    }
+
+
+@app.get("/auth/me")
+def auth_me(authorization: str | None = Header(default=None)) -> dict:
+    u = require_user(_bearer(authorization))
+    return {
+        "user": {
+            "user_id": u.user_id,
+            "org_id": u.org_id,
+            "email": u.email,
+            "first_name": u.first_name,
+            "last_name": u.last_name,
+            "role": u.role,
+        }
+    }
+
+
+@app.get("/api/admin/llm")
+def admin_llm_get(authorization: str | None = Header(default=None)) -> dict:
+    u = require_admin(_bearer(authorization))
+    ensure_org(u.org_id, name=u.org_id)
+    active = get_setting(u.org_id, "active_llm") or {"provider": "mock"}
+    providers = list_llm_providers(u.org_id)
+    # Ensure at least the known providers exist in the list.
+    known_defaults = {
+        "mock": "mock",
+        "openai": "gpt-4o-mini",
+        "gemini": "gemini-1.5-flash",
+    }
+    have = {p["provider"] for p in providers}
+    for prov, model in known_defaults.items():
+        if prov not in have:
+            upsert_llm_provider(org_id=u.org_id, provider=prov, model=model, api_key_plain=None)
+    providers = list_llm_providers(u.org_id)
+    return {"active": active, "providers": providers}
+
+
+@app.put("/api/admin/llm")
+def admin_llm_put(authorization: str | None = Header(default=None), payload: dict = Body(...)) -> dict:
+    u = require_admin(_bearer(authorization))
+    provider = str(payload.get("provider") or "mock").strip().lower()
+    model = str(payload.get("model") or "").strip()
+    api_key = str(payload.get("api_key") or "").strip() or None
+    set_active = bool(payload.get("set_active", True))
+
+    if provider not in {"mock", "openai", "gemini"}:
+        raise HTTPException(status_code=400, detail="Unsupported provider")
+    if not model:
+        model = "mock" if provider == "mock" else ("gpt-4o-mini" if provider == "openai" else "gemini-1.5-flash")
+
+    upsert_llm_provider(org_id=u.org_id, provider=provider, model=model, api_key_plain=api_key)
+    if set_active:
+        set_setting(u.org_id, "active_llm", {"provider": provider})
+    return {"status": "ok"}
+
+
 @app.post("/session/new")
-def create_session() -> dict[str, str]:
-    s = new_session(org_id='demo-org', user_id='demo-user')
+def create_session(payload: dict = Body(default_factory=dict)) -> dict[str, str]:
+    org_id = str(payload.get("org_id") or "ACME")
+    user_id = str(payload.get("user_id") or "demo-user")
+    s = new_session(org_id=org_id, user_id=user_id)
     return {"session_id": s.session_id}
 
 
@@ -398,7 +573,7 @@ async def chat(req: ChatRequest):
         "Respond with: (1) a short diagnosis, (2) numbered steps, (3) what to report back."
     )
 
-    llm = get_llm()
+    llm = get_llm(org_id=req.org_id)
     try:
         content = await llm.chat([
             {"role": "system", "content": system},

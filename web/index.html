@@ -3,8 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ACME IT Helpdesk — Login</title>
-  <meta name="description" content="Login to start solving your IT issues with Pin." />
+  <title>Pin — Loading…</title>
   <link rel="icon" href="./assets/pin-noticket.png" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
@@ -12,88 +11,28 @@
   <div class="login-wrap">
     <main class="login-hero">
       <div class="container">
-        <div class="login-grid">
-          <section class="card mascot-tile" aria-label="Welcome">
-            <div class="mascot-caption">
-                <div class="pin-logo" aria-label="PIN">
-                    <img src="./assets/pin-logo.png" alt="PIN logo" />
-                    <img src="./assets/pin-wordmark.png" alt="PIN wordmark"/>
-                    <!--div class="pin-word">(quietly helping)</!--div-->
-                </div>
-              <!--span class="badge">
-                <span aria-hidden="true">📌</span>
-                <span>Pin (quietly helping)</span>
-              </!--span-->
-            </div>
-
-            <h1 class="h1">Login to start solving your IT issues with Pin!</h1>
-            <p class="sub">
-              This is a <strong>demo</strong> login screen for the Pin UI. Authentication is stubbed.
-            </p>
-
-            <img src="./assets/acme-logo.png" alt="ACME logo" class="acme-hero"/>
-          </section>
-
-          <section class="card login-form" aria-label="Login form">
-            <h2 style="margin:0">Sign in</h2>
-            <p class="small" style="margin:0 0 6px">Use any credentials. They are not validated in this prototype.</p>
-
-            <label class="small" for="company">Company</label>
-            <input id="company" class="input" value="ACME" autocomplete="organization" />
-
-            <div class="form-row">
-              <div>
-                <label class="small" for="email">Email</label>
-                <input id="email" class="input" placeholder="jane.doe@acme.com" autocomplete="username" />
-              </div>
-              <!-- <div>
-                <label class="small" for="dept">Department</label>
-                <select id="dept">
-                  <option>IT</option>
-                  <option>Accounting</option>
-                  <option>Customer Service</option>
-                  <option>Manufacturing</option>
-                  <option>Other</option>
-                </select>
-              </div> -->
-            </div>
-
-            <label class="small" for="password">Password</label>
-            <input id="password" class="input" type="password" placeholder="••••••••" autocomplete="current-password" />
-
-            <div class="form-row" style="margin-top:4px">
-              <button id="loginBtn" class="btn" type="button">Login</button>
-              <button id="resetBtn" class="btn secondary" type="button">Reset</button>
-            </div>
-
-            <div class="hr"></div>
-
-            <details class="small">
-              <summary>What is this?</summary>
-              <p style="margin:10px 0 0">
-                Pin is a Tier-0/Tier-1 assistant. If it can't solve your issue from known documentation,
-                it collects the right details and generates a ticket payload for your help desk.
-              </p>
-            </details>
-          </section>
-        </div>
+        <section class="card" style="text-align:center">
+          <h1 class="h1" style="margin:0 0 10px">Pin</h1>
+          <p class="sub" style="margin:0">Loading…</p>
+        </section>
       </div>
     </main>
-
-    <footer>
-      <div class="container footer-inner">
-        <div class="footer-left">
-          <div class="small"><strong>Meta</strong>: Project <span class="mono">Pin</span> • UI Prototype • Build: <span class="mono" id="buildDate"></span></div>
-          <div class="small">Environment: <span class="mono">local</span> • Auth: <span class="mono">stub</span> • Data: <span class="mono">in-browser</span></div>
-        </div>
-        <div class="footer-right">
-          <div class="small"><strong>ACME IT</strong> Help Desk: (555) 010-4242 • helpdesk@acme.example</div>
-          <div class="small">© <span id="year"></span> ACME Corporation</div>
-        </div>
-      </div>
-    </footer>
   </div>
 
-  <script src="./login.js"></script>
+  <script>
+    (async () => {
+      // Default org for the capstone demo.
+      const orgId = "ACME";
+      try {
+        const r = await fetch(`/api/bootstrap/status?org_id=${encodeURIComponent(orgId)}`);
+        const j = await r.json();
+        if (j && j.initialized) window.location.href = "./login.html";
+        else window.location.href = "./setup.html";
+      } catch {
+        // If API is unreachable, go to login (still useful for static demo).
+        window.location.href = "./login.html";
+      }
+    })();
+  </script>
 </body>
 </html>

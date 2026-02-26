@@ -152,10 +152,6 @@
 
       <div class="hr"></div>
       <button class="btn" id="saveRAG">Save</button>
-
-      <div class="hr"></div>
-      <button class="btn" id="reingestKB">Re-ingest Knowledge Base</button>
-      <div id="reingestStatus" class="small" style="margin-top:10px"></div>
       <div class="small" style="margin-top:10px">
         Note: If you switch backends, you may need to re-ingest the KB so the selected index is populated.
       </div>
@@ -176,18 +172,6 @@
         renderRAG();
       } catch (e) {
         alert(String(e?.message || e));
-      }
-    });
-
-    $("#reingestKB").addEventListener("click", async () => {
-      if (!confirm("Re-ingest the knowledge base now? This may take a moment.")) return;
-      const status = $("#reingestStatus");
-      status.textContent = "Re-ingesting…";
-      try {
-        const stats = await api("/api/admin/kb/reingest", { method: "POST", body: JSON.stringify({}) });
-        status.innerHTML = `Done. Documents: <span class="mono">${stats.documents || 0}</span> • Chunks: <span class="mono">${stats.chunks || 0}</span> • Vectors: <span class="mono">${stats.vectors || 0}</span>`;
-      } catch (e) {
-        status.textContent = String(e?.message || e);
       }
     });
   };

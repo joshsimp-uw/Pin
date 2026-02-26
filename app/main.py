@@ -27,6 +27,8 @@ from app.models.schemas import AnswerResponse, ChatRequest, ChatResponse, Ticket
 from app.policies.guardrails import check_response, should_escalate
 from app.rag.index import retrieve
 from app.rag.ingest import ingest_kb_dir
+from app.llm.embeddings import get_active_rag_backend, set_active_rag_backend
+from app.knowledge.support import is_supported_request
 from app.rag.vec_store import connect_vec
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -307,13 +309,54 @@ def health() -> dict[str, str]:
 
 
 @app.post("/admin/kb/reingest")
-async def admin_kb_reingest(x_admin_token: str | None = Header(default=None)) -> dict[str, int]:
+async def admin_kb_reingest(
+    x_admin_token: str | None = Header(default=None),
+    org_id: str = "ACME",
+) -> dict[str, int]:
     """Re-ingest KB files from settings.kb_dir into SQLite + sqlite-vec.
 
     Provide the token via `X-Admin-Token`.
     """
     _require_admin(x_admin_token)
-    stats = await ingest_kb_dir(Path(settings.kb_dir))
+    stats = await ingest_kb_dir(Path(settings.kb_dir), org_id=org_id)
+    return stats
+
+
+@app.get("/api/admin/rag")
+def admin_rag_get(authorization: str | None = Header(default=None)) -> dict:
+    u = require_admin(_bearer(authorization))
+    backend = get_active_rag_backend(u.org_id)
+    # For UI: can we use Gemini embeddings?
+    from app.core.config_store import get_llm_provider_config
+
+    gem_cfg = get_llm_provider_config(u.org_id, "gemini") or {}
+    return {
+        "active": {"backend": backend},
+        "available": {
+            "local": True,
+            "gemini": bool(gem_cfg.get("api_key") or settings.gemini_api_key),
+        },
+    }
+
+
+@app.put("/api/admin/rag")
+def admin_rag_put(authorization: str | None = Header(default=None), payload: dict = Body(...)) -> dict:
+    u = require_admin(_bearer(authorization))
+    backend = str(payload.get("backend") or "local").strip().lower()
+    if backend not in {"local", "gemini"}:
+        raise HTTPException(status_code=400, detail="Unsupported RAG backend")
+    set_active_rag_backend(u.org_id, backend)
+    return {"status": "ok", "active": {"backend": get_active_rag_backend(u.org_id)}}
+
+
+@app.post("/api/admin/kb/reingest")
+async def api_admin_kb_reingest(authorization: str | None = Header(default=None)) -> dict[str, int]:
+    """Re-ingest KB from settings.kb_dir using the admin's org_id.
+
+    This is the bearer-token equivalent of /admin/kb/reingest.
+    """
+    u = require_admin(_bearer(authorization))
+    stats = await ingest_kb_dir(Path(settings.kb_dir), org_id=u.org_id)
     return stats
 
 
@@ -519,9 +562,47 @@ async def chat(req: ChatRequest):
             collected=state.collected,
         )
 
+    # If the user is asking about an unsupported device/OS/app, escalate immediately.
+    supported, unsupported_reason = is_supported_request(
+        message=req.message,
+        category=state.category or "unknown",
+        collected=state.collected,
+        kb_dir=Path(settings.kb_dir),
+    )
+    if not supported:
+        ticket = Ticket(
+            summary=state.collected.get("summary") or req.message.strip()[:120],
+            category=state.category or "unknown",
+            user={"org_id": req.org_id, "user_id": req.user_id, **{k: v for k, v in req.context.items() if k.startswith("user_")}},
+            device={k: v for k, v in req.context.items() if k.startswith("device_")},
+            diagnostics=state.collected,
+            steps_attempted=state.steps_attempted,
+            error_text=str(state.collected.get("error_message") or "") or None,
+            escalation_reason=unsupported_reason or "Unsupported device/OS/application",
+            citations=[],
+        )
+        rendered = _render_ticket(ticket)
+        insert_ticket(
+            org_id=req.org_id,
+            user_id=req.user_id,
+            session_id=state.session_id,
+            summary=ticket.summary,
+            category=ticket.category,
+            impact=ticket.impact,
+            urgency=ticket.urgency,
+            escalation_reason=ticket.escalation_reason,
+            rendered_text=rendered,
+            diagnostics=ticket.diagnostics,
+            steps_attempted=ticket.steps_attempted,
+            citations=[],
+        )
+        insert_message(session_id=state.session_id, role='assistant', content=rendered)
+        save_session(state)
+        return TicketResponse(ticket=ticket, rendered=rendered)
+
     # Retrieve docs based on message + collected context
     query = req.message + "\n" + "\n".join([f"{k}: {v}" for k, v in sorted(state.collected.items())])
-    citations, best_score = await retrieve(query)
+    citations, best_score = await retrieve(query, org_id=req.org_id)
 
     # Decide escalation
     esc, esc_reason = should_escalate(state.turns, best_score)

@@ -16,7 +16,11 @@ def _serialize_f32(vector: list[float]) -> bytes:
 
 
 def connect_vec() -> sqlite3.Connection:
-    """Open a SQLite connection with sqlite-vec loaded."""
+    """Open a SQLite connection (org DB) with sqlite-vec loaded.
+
+    We keep KB documents/chunks in the org SQLite DB so deployments stay simple.
+    Vector indexes are stored as sqlite-vec virtual tables inside the same DB.
+    """
     Path(settings.sqlite_path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(settings.sqlite_path)
     conn.row_factory = sqlite3.Row
@@ -50,16 +54,23 @@ def connect_vec() -> sqlite3.Connection:
     return conn
 
 
-def ensure_vec_schema(conn: sqlite3.Connection) -> None:
-    """Create the kb_vec table with the configured embedding dimension if missing.
+def _vec_table_name(backend: str) -> str:
+    b = (backend or "local").strip().lower()
+    return "kb_vec_gemini" if b == "gemini" else "kb_vec_local"
 
-    NOTE: The base schema file creates kb_vec with float[768]. This function lets you
-    create the correct dimension if you deploy with a different embedding size.
-    """
-    dim = int(settings.rag_embedding_dim)
+
+def _vec_dim(backend: str) -> int:
+    b = (backend or "local").strip().lower()
+    return int(settings.rag_embedding_dim_gemini if b == "gemini" else settings.rag_embedding_dim_local)
+
+
+def ensure_vec_schema(conn: sqlite3.Connection, *, backend: str) -> None:
+    """Create the vector table for the requested backend if missing."""
+    table = _vec_table_name(backend)
+    dim = _vec_dim(backend)
     conn.execute(
         f"""
-        CREATE VIRTUAL TABLE IF NOT EXISTS kb_vec USING vec0(
+        CREATE VIRTUAL TABLE IF NOT EXISTS {table} USING vec0(
           chunk_id TEXT PRIMARY KEY,
           embedding float[{dim}] distance_metric=cosine
         );
@@ -67,15 +78,16 @@ def ensure_vec_schema(conn: sqlite3.Connection) -> None:
     )
 
 
-def upsert_vectors(rows: Iterable[tuple[str, list[float]]]) -> None:
-    """Upsert (chunk_id, embedding) rows into kb_vec."""
+def upsert_vectors(rows: Iterable[tuple[str, list[float]]], *, backend: str) -> None:
+    """Upsert (chunk_id, embedding) rows into the selected vector table."""
     conn = connect_vec()
     try:
-        ensure_vec_schema(conn)
+        ensure_vec_schema(conn, backend=backend)
+        table = _vec_table_name(backend)
         cur = conn.cursor()
         for chunk_id, embedding in rows:
             cur.execute(
-                "INSERT OR REPLACE INTO kb_vec(chunk_id, embedding) VALUES (?, ?)",
+                f"INSERT OR REPLACE INTO {table}(chunk_id, embedding) VALUES (?, ?)",
                 (chunk_id, _serialize_f32(embedding)),
             )
         conn.commit()
@@ -83,17 +95,18 @@ def upsert_vectors(rows: Iterable[tuple[str, list[float]]]) -> None:
         conn.close()
 
 
-def knn(chunk_query_embedding: list[float], *, top_k: int | None = None) -> list[sqlite3.Row]:
-    """Return rows with (chunk_id, distance) from kb_vec."""
+def knn(chunk_query_embedding: list[float], *, top_k: int | None = None, backend: str) -> list[sqlite3.Row]:
+    """Return rows with (chunk_id, distance) from the selected vector table."""
     k = int(top_k or settings.rag_top_k)
     conn = connect_vec()
     try:
-        ensure_vec_schema(conn)
+        ensure_vec_schema(conn, backend=backend)
+        table = _vec_table_name(backend)
         q = _serialize_f32(chunk_query_embedding)
         rows = conn.execute(
-            """
+            f"""
             SELECT chunk_id, distance
-            FROM kb_vec
+            FROM {table}
             WHERE embedding MATCH ?
               AND k = ?
             ORDER BY distance ASC
@@ -150,13 +163,15 @@ def fetch_citations(chunk_ids: list[str]) -> list[Citation]:
     return citations
 
 
-def retrieve_with_scores(query_embedding: list[float], *, top_k: int | None = None) -> tuple[list[Citation], float]:
+def retrieve_with_scores(
+    query_embedding: list[float], *, top_k: int | None = None, backend: str
+) -> tuple[list[Citation], float]:
     """RAG retrieve: returns (citations, best_score).
 
     sqlite-vec returns cosine distance when distance_metric=cosine (0 is identical).
     We convert to a similarity-like score via (1 - distance).
     """
-    matches = knn(query_embedding, top_k=top_k)
+    matches = knn(query_embedding, top_k=top_k, backend=backend)
     if not matches:
         return [], 0.0
 

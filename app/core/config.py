@@ -38,7 +38,11 @@ class Settings(BaseSettings):
     # For sqlite-vec cosine distance, lower is better; we convert to a
     # similarity-like score via (1 - distance).
     rag_min_score: float = 0.12
-    rag_embedding_dim: int = 3072
+    # NOTE: We support switching between a local/offline embedding backend and
+    # Gemini embeddings. Each backend has its own sqlite-vec table with its own
+    # embedding dimension.
+    rag_embedding_dim_local: int = 384
+    rag_embedding_dim_gemini: int = 3072
 
     # LLM provider
     llm_provider: str = "mock"  # mock | openai | gemini

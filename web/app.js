@@ -39,11 +39,13 @@ const BACKEND_BASE = "http://localhost:8000";  // adjust if needed
  * Creates a new server session and returns { session_id }.
  * Call this exactly once when you create a new chat in the UI.
  */
-async function createServerSession({ org_id, user_id }) {
+async function createServerSession() {
   const res = await fetch(`${BACKEND_BASE}/session/new`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ org_id, user_id })
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.token}`,
+    },
   });
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
@@ -56,11 +58,14 @@ async function createServerSession({ org_id, user_id }) {
  * Sends a user message to the FastAPI /chat route and returns a string
  * that's safe to display in the chat (answer message or ticket text).
  */
-async function sendChatMessage({ message, session_id, org_id = "demo-org", user_id = "demo-user", context = {} }) {
+async function sendChatMessage({ message, session_id, context = {} }) {
   const res = await fetch(`${BACKEND_BASE}/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, session_id, org_id, user_id, context })
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.token}`,
+    },
+    body: JSON.stringify({ message, session_id, context })
   });
 
   if (!res.ok) {
@@ -245,7 +250,7 @@ if (adminBtn) {
         // If we don't yet have a server session, either create one or pass null (server will create)
         if (!chat.serverSessionId) {
           try {
-            const { session_id } = await createServerSession({ org_id: session.org_id || session.company, user_id: session.email });
+            const { session_id } = await createServerSession();
             chat.serverSessionId = session_id;
             saveState();
           } catch (e) {
@@ -263,8 +268,6 @@ if (adminBtn) {
         const { text: botText } = await sendChatMessage({
           message: text,
           session_id: chat.serverSessionId ?? null,
-          org_id: session.org_id || session.company || "ACME",
-          user_id: session.email || "demo-user",
           context
         });
 

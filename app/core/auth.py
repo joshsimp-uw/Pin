@@ -4,11 +4,13 @@ import hashlib
 import hmac
 import os
 import uuid
+from datetime import datetime, timedelta
 from dataclasses import dataclass
 from typing import Any
 
 from fastapi import HTTPException
 
+from app.core.config import settings
 from app.core.db import connect
 
 
@@ -90,6 +92,15 @@ def get_user_by_email(*, org_id: str, email: str) -> AuthUser | None:
 
 def issue_token(*, org_id: str, user_id: str, expires_at: str | None = None) -> str:
     token = str(uuid.uuid4())
+
+    # Default TTL unless caller explicitly provides an expiry.
+    if expires_at is None:
+        ttl = int(getattr(settings, "session_ttl_seconds", 0) or 0)
+        if ttl > 0:
+            dt = datetime.utcnow() + timedelta(seconds=ttl)
+            # Match SQLite datetime('now') format (UTC) for easy comparison in SQL.
+            expires_at = dt.strftime("%Y-%m-%d %H:%M:%S")
+
     conn = connect()
     try:
         conn.execute(
@@ -105,17 +116,26 @@ def issue_token(*, org_id: str, user_id: str, expires_at: str | None = None) -> 
 def get_user_by_token(token: str) -> AuthUser | None:
     conn = connect()
     try:
+        # Enforce session expiry. If expires_at is NULL, treat as non-expiring
+        # (legacy behavior), otherwise require expires_at > now.
         row = conn.execute(
             """
-            SELECT u.user_id, u.org_id, u.email, u.first_name, u.last_name, u.role
+            SELECT u.user_id, u.org_id, u.email, u.first_name, u.last_name, u.role,
+                   s.expires_at AS expires_at
             FROM auth_sessions s
             JOIN users u ON u.user_id = s.user_id
             WHERE s.token=?
+              AND (s.expires_at IS NULL OR s.expires_at > datetime('now'))
             """,
             (token,),
         ).fetchone()
+
         if not row:
+            # Opportunistic cleanup of expired sessions for this token.
+            conn.execute("DELETE FROM auth_sessions WHERE token=? AND expires_at IS NOT NULL AND expires_at <= datetime('now')", (token,))
+            conn.commit()
             return None
+
         return AuthUser(
             user_id=row["user_id"],
             org_id=row["org_id"],

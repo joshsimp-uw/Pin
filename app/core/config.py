@@ -63,5 +63,19 @@ class Settings(BaseSettings):
     max_turns_before_escalate: int = 20
     require_citations: bool = True
 
+    # Auth
+    session_ttl_seconds: int = 8 * 60 * 60  # 8 hours
+    # If true, seed demo org/users on startup (dev/demo environments only).
+    demo_seed: bool = False
+    default_org_id: str = "ACME"
+
+    # CORS (comma-separated origins)
+    cors_origins: str = "http://localhost:8000"
+    cors_allow_credentials: bool = True
+
+    # Bootstrap
+    # If false, /api/bootstrap/* endpoints are disabled.
+    bootstrap_enabled: bool = True
+
 
 settings = Settings()

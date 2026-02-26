@@ -35,18 +35,30 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title=settings.app_name)
 
+def _cors_origins() -> list[str]:
+    # Comma-separated list; allow JSON-ish list too.
+    raw = (settings.cors_origins or "").strip()
+    if not raw:
+        return []
+    if raw.startswith("[") and raw.endswith("]"):
+        # Best-effort parse: ["a","b"]
+        raw = raw.strip("[]")
+        parts = [p.strip().strip('"').strip("'") for p in raw.split(",")]
+        return [p for p in parts if p]
+    return [p.strip() for p in raw.split(",") if p.strip()]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8000",  # or whichever origin serves app.html
-    ],
-    allow_credentials=True,
+    allow_origins=_cors_origins(),
+    allow_credentials=bool(getattr(settings, "cors_allow_credentials", True)),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-def _require_admin(x_admin_token: str | None) -> None:
+
+def _require_admin_token(x_admin_token: str | None) -> None:
     if not settings.admin_token:
         raise HTTPException(status_code=500, detail="Admin token is not configured on the server")
     if not x_admin_token or x_admin_token != settings.admin_token:
@@ -60,27 +72,37 @@ def _bearer(authorization: str | None) -> str | None:
         return authorization.split(" ", 1)[1].strip() or None
     return None
 
+def _org_exists(org_id: str) -> bool:
+    conn = connect()
+    try:
+        row = conn.execute("SELECT 1 FROM orgs WHERE org_id=? LIMIT 1", (org_id,)).fetchone()
+        return bool(row)
+    finally:
+        conn.close()
+
+
 
 @app.on_event("startup")
 async def _startup() -> None:
     # Create/upgrade schema for this org site's SQLite database.
     init_schema()
 
-    # Seed demo org + users (idempotent). These are required for the capstone demo.
-    demo_org = "ACME"
-    ensure_org(demo_org, name="ACME")
-    # User IDs are emails for simplicity.
-    ensure_user(org_id=demo_org, user_id="john.doe@acme.com", first_name="John", last_name="Doe", email="john.doe@acme.com", role="end_user")
-    ensure_user(org_id=demo_org, user_id="jane.doe@acme.com", first_name="Jane", last_name="Doe", email="jane.doe@acme.com", role="end_user")
-    ensure_user(org_id=demo_org, user_id="admin.doe@acme.com", first_name="Admin", last_name="Doe", email="admin.doe@acme.com", role="admin")
-    # Set/update their passwords.
-    for uid in ["john.doe@acme.com", "jane.doe@acme.com", "admin.doe@acme.com"]:
-        set_user_password(user_id=uid, password="Passw0rd!")
+    org_id = (getattr(settings, "default_org_id", "ACME") or "ACME").strip() or "ACME"
+
+    # Optional demo seeding (OFF by default). Enable with:
+    #   TIER1_DEMO_SEED=true
+    if bool(getattr(settings, "demo_seed", False)):
+        # Do not auto-create orgs here; missing org means not initialized.
+        # User IDs are emails for simplicity.
+        ensure_user(org_id=org_id, user_id="john.doe@acme.com", first_name="John", last_name="Doe", email="john.doe@acme.com", role="end_user")
+        ensure_user(org_id=org_id, user_id="jane.doe@acme.com", first_name="Jane", last_name="Doe", email="jane.doe@acme.com", role="end_user")
+        ensure_user(org_id=org_id, user_id="admin.doe@acme.com", first_name="Admin", last_name="Doe", email="admin.doe@acme.com", role="admin")
+        # Set/update their passwords.
+        for uid in ["john.doe@acme.com", "jane.doe@acme.com", "admin.doe@acme.com"]:
+            set_user_password(user_id=uid, password="Passw0rd!")
 
     # Keep KB + vectors in sync automatically.
-    # - If KB files change, re-ingest.
-    # - If RAG backend changes, rebuild vectors for the active backend.
-    await ensure_kb_fresh(Path(settings.kb_dir), org_id=demo_org)
+    await ensure_kb_fresh(Path(settings.kb_dir), org_id=org_id)
 
 
 def _extract_kv(message: str) -> dict[str, str]:
@@ -315,15 +337,14 @@ def health() -> dict[str, str]:
 
 @app.post("/admin/kb/reingest")
 async def admin_kb_reingest(
-    x_admin_token: str | None = Header(default=None),
-    org_id: str = "ACME",
+    authorization: str | None = Header(default=None),
 ) -> dict[str, int]:
     """Re-ingest KB files from settings.kb_dir into SQLite + sqlite-vec.
 
-    Provide the token via `X-Admin-Token`.
+    Admin-only endpoint.
     """
-    _require_admin(x_admin_token)
-    stats = await ingest_kb_dir(Path(settings.kb_dir), org_id=org_id)
+    u = require_admin(_bearer(authorization))
+    stats = await ingest_kb_dir(Path(settings.kb_dir), org_id=u.org_id)
     return stats
 
 
@@ -357,9 +378,9 @@ async def admin_rag_put(authorization: str | None = Header(default=None), payloa
 
 
 @app.get("/admin/kb/docs")
-def admin_kb_docs(x_admin_token: str | None = Header(default=None)) -> list[dict[str, str]]:
-    """List KB documents stored in the DB."""
-    _require_admin(x_admin_token)
+def admin_kb_docs(authorization: str | None = Header(default=None)) -> list[dict[str, str]]:
+    """List KB documents stored in the DB (admin-only)."""
+    u = require_admin(_bearer(authorization))
     conn = connect_vec()
     try:
         rows = conn.execute(
@@ -378,7 +399,9 @@ def admin_kb_docs(x_admin_token: str | None = Header(default=None)) -> list[dict
 @app.get("/api/bootstrap/status")
 def bootstrap_status(org_id: str = "ACME") -> dict[str, bool]:
     """Return whether the org DB has been initialized via the setup page."""
-    ensure_org(org_id, name=org_id)
+    # Do not auto-create orgs here; missing org means not initialized.
+    if not _org_exists(org_id):
+        return {"initialized": False}
     initialized = bool(get_setting(org_id, "initialized"))
     # Also treat "initialized" as true if there is any admin user.
     conn = connect()
@@ -392,7 +415,7 @@ def bootstrap_status(org_id: str = "ACME") -> dict[str, bool]:
 
 
 @app.post("/api/bootstrap/setup")
-def bootstrap_setup(payload: dict = Body(...)) -> dict[str, str]:
+def bootstrap_setup(payload: dict = Body(...), x_admin_token: str | None = Header(default=None, alias="X-Admin-Token")) -> dict[str, str]:
     """One-time setup for a new DB: create an admin user and initial LLM config."""
     org_id = str(payload.get("org_id") or "ACME").strip() or "ACME"
     org_name = str(payload.get("org_name") or org_id).strip() or org_id
@@ -403,6 +426,13 @@ def bootstrap_setup(payload: dict = Body(...)) -> dict[str, str]:
     llm_provider = str(payload.get("llm_provider") or "mock").strip().lower()
     llm_model = str(payload.get("llm_model") or "").strip() or ("gpt-4o-mini" if llm_provider == "openai" else "gemini-1.5-flash")
     llm_api_key = str(payload.get("llm_api_key") or "").strip() or None
+
+    if not bool(getattr(settings, "bootstrap_enabled", True)):
+        raise HTTPException(status_code=404, detail="Bootstrap is disabled on this server")
+
+    # In non-dev environments, require the server's admin token to run bootstrap.
+    if str(getattr(settings, "environment", "dev")).lower() != "dev":
+        _require_admin_token(x_admin_token)
 
     if not admin_email or not password:
         raise HTTPException(status_code=400, detail="admin_email and password are required")
@@ -438,7 +468,7 @@ def auth_login(payload: dict = Body(...)) -> dict:
     password = str(payload.get("password") or "").strip()
     if not email or not password:
         raise HTTPException(status_code=400, detail="email and password are required")
-    ensure_org(org_id, name=org_id)
+    # Do not auto-create orgs here; missing org means not initialized.
 
     u = get_user_by_email(org_id=org_id, email=email)
     if not u:

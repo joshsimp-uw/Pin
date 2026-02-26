@@ -208,11 +208,18 @@ CREATE TABLE IF NOT EXISTS kb_chunks (
 );
 CREATE INDEX IF NOT EXISTS idx_kb_chunks_doc ON kb_chunks(doc_id);
 
--- Vector index (sqlite-vec). This is a virtual table.
+-- Vector indexes (sqlite-vec). These are virtual tables.
 -- NOTE: This requires sqlite-vec extension to be loaded in the SQLite connection.
--- The embedding dimension must match TIER1_RAG_EMBEDDING_DIM (default 768).
--- If you change the dimension, drop + recreate this table and re-ingest.
-CREATE VIRTUAL TABLE IF NOT EXISTS kb_vec USING vec0(
+-- We maintain two indexes so admins can switch between an offline/local embedding
+-- backend and Gemini embeddings without redeploying.
+--
+-- Local/offline backend (feature hashing). Dim matches TIER1_RAG_EMBEDDING_DIM_LOCAL.
+CREATE VIRTUAL TABLE IF NOT EXISTS kb_vec_local USING vec0(
+  chunk_id TEXT PRIMARY KEY,
+  embedding float[384] distance_metric=cosine
+);
+-- Gemini embeddings backend. Dim matches TIER1_RAG_EMBEDDING_DIM_GEMINI.
+CREATE VIRTUAL TABLE IF NOT EXISTS kb_vec_gemini USING vec0(
   chunk_id TEXT PRIMARY KEY,
   embedding float[3072] distance_metric=cosine
 );

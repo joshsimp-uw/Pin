@@ -131,6 +131,67 @@
     });
   };
 
+  const renderRAG = async () => {
+    const data = await api("/api/admin/rag", { method: "GET" });
+    const active = (data.active?.backend || "local").toLowerCase();
+    const canGemini = Boolean(data.available?.gemini);
+
+    $("#adminPanel").innerHTML = `
+      <h2>RAG Settings</h2>
+      <p class="small">Select which vector index to use for retrieval. Local mode works offline; Gemini mode uses your stored <span class="mono">aistudio.google.com</span> key for embeddings.</p>
+      <div class="hr"></div>
+
+      <label class="small">Active Vector Backend</label>
+      <select id="ragBackend">
+        <option value="local">local (offline)</option>
+        <option value="gemini">gemini (embeddings)</option>
+      </select>
+      <div class="small" style="margin-top:6px">
+        Gemini availability: <span class="mono">${canGemini ? "available" : "missing key"}</span>
+      </div>
+
+      <div class="hr"></div>
+      <button class="btn" id="saveRAG">Save</button>
+
+      <div class="hr"></div>
+      <button class="btn" id="reingestKB">Re-ingest Knowledge Base</button>
+      <div id="reingestStatus" class="small" style="margin-top:10px"></div>
+      <div class="small" style="margin-top:10px">
+        Note: If you switch backends, you may need to re-ingest the KB so the selected index is populated.
+      </div>
+    `;
+
+    const sel = $("#ragBackend");
+    sel.value = active;
+    if (!canGemini) {
+      sel.querySelector('option[value="gemini"]').disabled = true;
+      if (sel.value === "gemini") sel.value = "local";
+    }
+
+    $("#saveRAG").addEventListener("click", async () => {
+      const backend = sel.value;
+      try {
+        await api("/api/admin/rag", { method: "PUT", body: JSON.stringify({ backend }) });
+        alert("Saved RAG settings.");
+        renderRAG();
+      } catch (e) {
+        alert(String(e?.message || e));
+      }
+    });
+
+    $("#reingestKB").addEventListener("click", async () => {
+      if (!confirm("Re-ingest the knowledge base now? This may take a moment.")) return;
+      const status = $("#reingestStatus");
+      status.textContent = "Re-ingesting…";
+      try {
+        const stats = await api("/api/admin/kb/reingest", { method: "POST", body: JSON.stringify({}) });
+        status.innerHTML = `Done. Documents: <span class="mono">${stats.documents || 0}</span> • Chunks: <span class="mono">${stats.chunks || 0}</span> • Vectors: <span class="mono">${stats.vectors || 0}</span>`;
+      } catch (e) {
+        status.textContent = String(e?.message || e);
+      }
+    });
+  };
+
   // Keep the other tabs as placeholders (still local-only for now)
   const renderStub = (title, text) => {
     $("#adminPanel").innerHTML = `
@@ -142,7 +203,7 @@
   const route = (view) => {
     setActive(view);
     if (view === "llm") return renderLLM();
-    if (view === "rag") return renderStub("RAG Settings", "RAG settings UI is still a stub in this branch.");
+    if (view === "rag") return renderRAG();
     if (view === "flows") return renderStub("Flow Rules", "Flow rules UI is still a stub in this branch.");
     if (view === "audit") return renderStub("Audit Log", "Audit log UI is still a stub in this branch.");
     return renderLLM();

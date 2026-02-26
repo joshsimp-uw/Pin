@@ -33,20 +33,39 @@
   $("loginBtn").addEventListener("click", () => {
     const company = $("company").value.trim() || defaults.company;
     const email = $("email").value.trim() || defaults.email;
-    // const dept = $("dept").value;
+    const password = $("password").value;
 
-    const session = {
-      company,
-      email,
-      // dept,
-      // stub auth: mark logged in
-      isAuthenticated: true,
-      issuedAt: new Date().toISOString(),
-    };
+    (async () => {
+      try {
+        const r = await fetch("/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ org_id: company, email, password })
+        });
+        if (!r.ok) {
+          const t = await r.text().catch(() => "");
+          throw new Error(t || `Login failed (${r.status})`);
+        }
+        const data = await r.json();
+        const user = data.user || {};
 
-    localStorage.setItem("pin_demo_login", JSON.stringify({ company, email })); // got rid of dept after email
-    localStorage.setItem("pin_session", JSON.stringify(session));
+        const session = {
+          company,
+          org_id: user.org_id || company,
+          email: user.email || email,
+          role: user.role || "end_user",
+          token: data.token,
+          isAuthenticated: true,
+          issuedAt: new Date().toISOString(),
+        };
 
-    window.location.href = "./app.html";
+        localStorage.setItem("pin_demo_login", JSON.stringify({ company, email }));
+        localStorage.setItem("pin_session", JSON.stringify(session));
+
+        window.location.href = "./app.html";
+      } catch (e) {
+        alert(String(e?.message || e));
+      }
+    })();
   });
 })();

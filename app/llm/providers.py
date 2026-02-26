@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
+from app.core.config_store import get_llm_provider_config, get_setting
 
 
 class LLMError(RuntimeError):
@@ -63,23 +64,42 @@ class OpenAICompatibleLLM(BaseLLM):
             raise LLMError(f"Unexpected LLM response format: {json.dumps(data)[:800]}") from e
 
 
-def get_llm() -> BaseLLM:
-    provider = settings.llm_provider.lower()
+def get_llm(*, org_id: str = "demo-org") -> BaseLLM:
+    """Return the active LLM.
+
+    Preference order:
+      1) Per-org DB config (admin UI / bootstrap)
+      2) Environment settings (TIER1_*)
+      3) Mock
+    """
+    active = get_setting(org_id, "active_llm")
+    provider = (
+        str(active.get("provider"))
+        if isinstance(active, dict) and active.get("provider")
+        else settings.llm_provider
+    ).lower()
+
+    db_cfg = get_llm_provider_config(org_id, provider)
+
     if provider == "openai":
-        if not settings.openai_api_key:
-            raise LLMError("TIER1_OPENAI_API_KEY is required when TIER1_LLM_PROVIDER=openai")
+        api_key = (db_cfg or {}).get("api_key") or settings.openai_api_key
+        model = (db_cfg or {}).get("model") or settings.openai_model
+        if not api_key:
+            raise LLMError("OpenAI API key is not configured")
         return OpenAICompatibleLLM(
-            api_key=settings.openai_api_key,
-            model=settings.openai_model,
+            api_key=api_key,
+            model=model,
             base_url=settings.openai_base_url,
         )
+
     if provider == "gemini":
         from app.llm.gemini import GeminiLLM
 
-        if not settings.gemini_api_key:
-            raise LLMError("TIER1_GEMINI_API_KEY is required when TIER1_LLM_PROVIDER=gemini")
-        return GeminiLLM(
-            api_key=settings.gemini_api_key,
-            model=settings.gemini_model,
-        )
+        api_key = (db_cfg or {}).get("api_key") or settings.gemini_api_key
+        model = (db_cfg or {}).get("model") or settings.gemini_model
+        if not api_key:
+            raise LLMError("Gemini API key is not configured")
+        return GeminiLLM(api_key=api_key, model=model)
+
+    # Mock is always available
     return MockLLM()

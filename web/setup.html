@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pin — First-time Setup</title>
+  <meta name="description" content="Initialize Pin database: admin user + LLM configuration." />
+  <link rel="icon" href="./assets/pin-noticket.png" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <div class="login-wrap">
+    <main class="login-hero">
+      <div class="container">
+        <div class="login-grid">
+
+          <section class="card mascot-tile" aria-label="Setup info">
+            <div class="pin-logo" aria-label="PIN">
+              <img src="./assets/pin-logo.png" alt="PIN logo" />
+              <img src="./assets/pin-wordmark.png" alt="PIN wordmark" />
+            </div>
+            <h1 class="h1">First-time setup</h1>
+            <p class="sub">Create the initial admin user and configure the LLM provider.</p>
+            <img src="./assets/acme-logo.png" alt="ACME logo" class="acme-hero"/>
+          </section>
+
+          <section class="card login-form" aria-label="Setup form">
+            <h2 style="margin:0">Initialize</h2>
+            <p class="small" style="margin:0 0 6px">This runs once per database. If already initialized, you'll be redirected to login.</p>
+
+            <label class="small" for="orgId">Org ID</label>
+            <input id="orgId" class="input" value="ACME" />
+
+            <label class="small" for="orgName" style="margin-top:10px">Org Name</label>
+            <input id="orgName" class="input" value="ACME" />
+
+            <div class="hr"></div>
+
+            <h3 style="margin:0 0 6px">Admin user</h3>
+
+            <label class="small" for="adminEmail">Email</label>
+            <input id="adminEmail" class="input" placeholder="admin@acme.com" />
+
+            <div class="form-row">
+              <div>
+                <label class="small" for="adminFirst">First name</label>
+                <input id="adminFirst" class="input" value="Admin" />
+              </div>
+              <div>
+                <label class="small" for="adminLast">Last name</label>
+                <input id="adminLast" class="input" value="" />
+              </div>
+            </div>
+
+            <label class="small" for="adminPassword">Password</label>
+            <input id="adminPassword" class="input" type="password" placeholder="Choose a password" />
+
+            <div class="hr"></div>
+
+            <h3 style="margin:0 0 6px">LLM</h3>
+            <label class="small" for="llmProvider">Provider</label>
+            <select id="llmProvider">
+              <option value="mock">mock</option>
+              <option value="openai">openai</option>
+              <option value="gemini">gemini</option>
+            </select>
+
+            <label class="small" for="llmModel" style="margin-top:10px">Model</label>
+            <input id="llmModel" class="input" placeholder="gpt-4o-mini" />
+
+            <label class="small" for="llmKey" style="margin-top:10px">API Key</label>
+            <input id="llmKey" class="input" type="password" placeholder="Optional for mock" />
+
+            <div class="hr"></div>
+            <button id="setupBtn" class="btn" type="button">Create Admin + Configure LLM</button>
+          </section>
+
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="container footer-inner">
+        <div class="footer-left">
+          <div class="small"><strong>Meta</strong>: Project <span class="mono">Pin</span> • Setup • Build: <span class="mono" id="buildDate"></span></div>
+        </div>
+        <div class="footer-right">
+          <div class="small">© <span id="year"></span> ACME Corporation</div>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <script src="./setup.js"></script>
+</body>
+</html>

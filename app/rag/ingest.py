@@ -11,6 +11,7 @@ import yaml
 
 from app.llm.embeddings import embed_texts, get_active_rag_backend
 from app.rag.vec_store import connect_vec, ensure_vec_schema
+from app.core.db import connect
 
 
 @dataclass
@@ -81,6 +82,118 @@ def _infer_taxonomy(fp: Path, *, kb_dir: Path) -> tuple[str | None, str | None, 
         return None, None, None
     device_type, os_name, app_name = parts[0], parts[1], parts[2]
     return device_type, os_name, app_name
+
+
+def _is_hidden_path(fp: Path, *, kb_dir: Path) -> bool:
+    """Return True if any path part under kb_dir starts with '_' or '.'."""
+    try:
+        rel = fp.resolve().relative_to(kb_dir.resolve())
+    except Exception:
+        return False
+    return any(p.startswith(("_", ".")) for p in rel.parts)
+
+
+def _kb_file_is_supported(fp: Path, *, kb_dir: Path) -> bool:
+    if _is_hidden_path(fp, kb_dir=kb_dir):
+        return False
+    device_type, os_name, app_name = _infer_taxonomy(fp, kb_dir=kb_dir)
+    if not (device_type and os_name and app_name):
+        return False
+    # Enforce the convention that each issue lives in issue.md
+    if fp.suffix.lower() == ".md" and fp.name.lower() != "issue.md":
+        return False
+    return True
+
+
+def kb_dir_signature(kb_dir: Path) -> str:
+    """Compute a stable signature for KB contents.
+
+    This is used to detect filesystem KB changes and trigger immediate re-ingestion.
+    """
+    files = sorted(list(kb_dir.glob("**/*.md")) + list(kb_dir.glob("**/*.yaml")) + list(kb_dir.glob("**/*.yml")))
+    h = hashlib.sha1()
+    for fp in files:
+        if not _kb_file_is_supported(fp, kb_dir=kb_dir):
+            continue
+        try:
+            rel = fp.resolve().relative_to(kb_dir.resolve()).as_posix()
+        except Exception:
+            rel = fp.as_posix()
+        h.update(rel.encode("utf-8"))
+        h.update(b"\0")
+        h.update(fp.read_bytes())
+        h.update(b"\0")
+    return h.hexdigest()
+
+
+def _get_kb_state(key: str) -> str | None:
+    conn = connect()
+    try:
+        r = conn.execute("SELECT value_text FROM kb_state WHERE key=?", (key,)).fetchone()
+        return str(r["value_text"]) if r else None
+    finally:
+        conn.close()
+
+
+def _set_kb_state(key: str, value: str) -> None:
+    conn = connect()
+    try:
+        conn.execute(
+            """
+            INSERT INTO kb_state(key, value_text, updated_at)
+            VALUES(?, ?, datetime('now'))
+            ON CONFLICT(key) DO UPDATE SET
+              value_text=excluded.value_text,
+              updated_at=datetime('now')
+            """,
+            (key, value),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+async def rebuild_vectors_from_db(*, backend: str, org_id: str = "ACME") -> dict[str, int]:
+    """Rebuild the selected vector index from existing kb_chunks.
+
+    Use this when the active RAG backend changes (e.g., local -> gemini) but the
+    KB text itself did not.
+    """
+    conn = connect_vec()
+    try:
+        ensure_vec_schema(conn, backend=backend)
+        # Pull all chunks and rebuild the selected vector table from scratch.
+        rows = conn.execute(
+            """
+            SELECT c.chunk_id, d.title AS doc_title, c.section_title, c.text
+            FROM kb_chunks AS c
+            JOIN kb_documents AS d ON d.doc_id = c.doc_id
+            ORDER BY c.chunk_id
+            """
+        ).fetchall()
+
+        table = "kb_vec_gemini" if backend == "gemini" else "kb_vec_local"
+        conn.execute(f"DELETE FROM {table}")
+        conn.commit()
+
+        texts = [f"{r['doc_title']} — {r['section_title']}\n\n{r['text']}" for r in rows]
+        chunk_ids = [str(r["chunk_id"]) for r in rows]
+
+        batch_size = 16
+        embeddings: list[list[float]] = []
+        for i in range(0, len(texts), batch_size):
+            embeddings.extend(await embed_texts(texts[i : i + batch_size], org_id=org_id, backend=backend))
+
+        cur = conn.cursor()
+        for cid, emb in zip(chunk_ids, embeddings):
+            cur.execute(
+                f"INSERT OR REPLACE INTO {table}(chunk_id, embedding) VALUES (?, ?)",
+                (cid, struct.pack("%sf" % len(emb), *emb)),
+            )
+        conn.commit()
+        return {"chunks": len(rows), "vectors": len(rows)}
+    finally:
+        conn.close()
 
 
 def load_kb_file(fp: Path, *, kb_dir: Path) -> tuple[DocMeta, list[tuple[str, str]]]:
@@ -177,7 +290,8 @@ def _upsert_documents_and_chunks(conn, docs: list[tuple[DocMeta, list[tuple[str,
 
 
 async def ingest_kb_dir(kb_dir: Path, *, org_id: str = "ACME") -> dict[str, int]:
-    files = sorted(list(kb_dir.glob("**/*.md")) + list(kb_dir.glob("**/*.yaml")) + list(kb_dir.glob("**/*.yml")))
+    files_all = sorted(list(kb_dir.glob("**/*.md")) + list(kb_dir.glob("**/*.yaml")) + list(kb_dir.glob("**/*.yml")))
+    files = [fp for fp in files_all if _kb_file_is_supported(fp, kb_dir=kb_dir)]
     docs = [load_kb_file(fp, kb_dir=kb_dir) for fp in files]
 
     backend = get_active_rag_backend(org_id)
@@ -206,8 +320,52 @@ async def ingest_kb_dir(kb_dir: Path, *, org_id: str = "ACME") -> dict[str, int]
     finally:
         conn.close()
 
+    # Persist signature + backend used so we can auto-sync on startup.
+    try:
+        _set_kb_state("kb_signature", kb_dir_signature(kb_dir))
+        _set_kb_state("kb_last_backend", str(backend))
+    except Exception:
+        # Don't fail ingestion if state persistence fails.
+        pass
+
     return {
         "files": len(files),
         "docs": len(docs),
         "chunks": len(chunk_payloads),
     }
+
+
+async def ensure_kb_fresh(kb_dir: Path, *, org_id: str = "ACME") -> dict[str, int]:
+    """Ensure the KB + active vector index are up to date.
+
+    Rules:
+    - If KB files changed on disk, re-ingest (docs/chunks + vectors).
+    - If active RAG backend changed, rebuild vectors for the active backend.
+    """
+    kb_dir = Path(kb_dir)
+    backend = get_active_rag_backend(org_id)
+
+    current_sig = kb_dir_signature(kb_dir) if kb_dir.exists() else ""
+    stored_sig = _get_kb_state("kb_signature") or ""
+    stored_backend = (_get_kb_state("kb_last_backend") or "").strip().lower()
+
+    # If we have no docs yet, treat as needing ingest.
+    conn = connect()
+    try:
+        r = conn.execute("SELECT COUNT(*) AS n FROM kb_documents").fetchone()
+        doc_count = int(r["n"]) if r else 0
+    finally:
+        conn.close()
+
+    if doc_count == 0 or current_sig != stored_sig:
+        return await ingest_kb_dir(kb_dir, org_id=org_id)
+
+    if stored_backend != backend:
+        stats = await rebuild_vectors_from_db(backend=backend, org_id=org_id)
+        try:
+            _set_kb_state("kb_last_backend", str(backend))
+        except Exception:
+            pass
+        return {"files": 0, "docs": doc_count, **stats}
+
+    return {"files": 0, "docs": doc_count, "chunks": 0}

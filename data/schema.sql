@@ -208,6 +208,14 @@ CREATE TABLE IF NOT EXISTS kb_chunks (
 );
 CREATE INDEX IF NOT EXISTS idx_kb_chunks_doc ON kb_chunks(doc_id);
 
+-- Small key/value state table for KB ingestion + vector sync.
+-- This lets us detect KB filesystem changes and rebuild embeddings automatically.
+CREATE TABLE IF NOT EXISTS kb_state (
+  key        TEXT PRIMARY KEY,
+  value_text TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Vector indexes (sqlite-vec). These are virtual tables.
 -- NOTE: This requires sqlite-vec extension to be loaded in the SQLite connection.
 -- We maintain two indexes so admins can switch between an offline/local embedding

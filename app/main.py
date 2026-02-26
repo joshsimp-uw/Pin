@@ -26,7 +26,7 @@ from app.llm.providers import LLMError, get_llm
 from app.models.schemas import AnswerResponse, ChatRequest, ChatResponse, Ticket, TicketResponse
 from app.policies.guardrails import check_response, should_escalate
 from app.rag.index import retrieve
-from app.rag.ingest import ingest_kb_dir
+from app.rag.ingest import ingest_kb_dir, ensure_kb_fresh
 from app.llm.embeddings import get_active_rag_backend, set_active_rag_backend
 from app.knowledge.support import is_supported_request
 from app.rag.vec_store import connect_vec
@@ -62,7 +62,7 @@ def _bearer(authorization: str | None) -> str | None:
 
 
 @app.on_event("startup")
-def _startup() -> None:
+async def _startup() -> None:
     # Create/upgrade schema for this org site's SQLite database.
     init_schema()
 
@@ -76,6 +76,11 @@ def _startup() -> None:
     # Set/update their passwords.
     for uid in ["john.doe@acme.com", "jane.doe@acme.com", "admin.doe@acme.com"]:
         set_user_password(user_id=uid, password="Passw0rd!")
+
+    # Keep KB + vectors in sync automatically.
+    # - If KB files change, re-ingest.
+    # - If RAG backend changes, rebuild vectors for the active backend.
+    await ensure_kb_fresh(Path(settings.kb_dir), org_id=demo_org)
 
 
 def _extract_kv(message: str) -> dict[str, str]:
@@ -340,12 +345,14 @@ def admin_rag_get(authorization: str | None = Header(default=None)) -> dict:
 
 
 @app.put("/api/admin/rag")
-def admin_rag_put(authorization: str | None = Header(default=None), payload: dict = Body(...)) -> dict:
+async def admin_rag_put(authorization: str | None = Header(default=None), payload: dict = Body(...)) -> dict:
     u = require_admin(_bearer(authorization))
     backend = str(payload.get("backend") or "local").strip().lower()
     if backend not in {"local", "gemini"}:
         raise HTTPException(status_code=400, detail="Unsupported RAG backend")
     set_active_rag_backend(u.org_id, backend)
+    # Immediately rebuild embeddings for the newly-selected backend.
+    await ensure_kb_fresh(Path(settings.kb_dir), org_id=u.org_id)
     return {"status": "ok", "active": {"backend": get_active_rag_backend(u.org_id)}}
 
 

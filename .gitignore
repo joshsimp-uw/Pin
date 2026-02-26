@@ -1,0 +1,14 @@
+# Virtual environment
+.venv/
+
+# Runtime data
+data/pin.db
+data/secret.key
+data/rag_index.pkl
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS junk
+.DS_Store

@@ -349,17 +349,6 @@ def admin_rag_put(authorization: str | None = Header(default=None), payload: dic
     return {"status": "ok", "active": {"backend": get_active_rag_backend(u.org_id)}}
 
 
-@app.post("/api/admin/kb/reingest")
-async def api_admin_kb_reingest(authorization: str | None = Header(default=None)) -> dict[str, int]:
-    """Re-ingest KB from settings.kb_dir using the admin's org_id.
-
-    This is the bearer-token equivalent of /admin/kb/reingest.
-    """
-    u = require_admin(_bearer(authorization))
-    stats = await ingest_kb_dir(Path(settings.kb_dir), org_id=u.org_id)
-    return stats
-
-
 @app.get("/admin/kb/docs")
 def admin_kb_docs(x_admin_token: str | None = Header(default=None)) -> list[dict[str, str]]:
     """List KB documents stored in the DB."""

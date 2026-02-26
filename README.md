@@ -1,337 +1,217 @@
-# Pin
+# Pin -- Tier 0 / Tier 1 Support Assistant
 
-Pin is an AI-powered IT support assistant that uses Retrieval-Augmented
-Generation (RAG) against a structured knowledge base to troubleshoot
-supported systems and escalate unsupported requests into tickets.
+Pin is a company-scoped **Tier 0 / Tier 1 IT support assistant**
+designed to:
 
-Designed for controlled enterprise environments where scope enforcement,
-determinism, and offline capability matter.
+-   Collect structured troubleshooting data
+-   Retrieve knowledge base documentation (RAG)
+-   Provide grounded answers
+-   Escalate to ticket when documentation confidence is low
+-   Operate as a deployable system service
 
-------------------------------------------------------------------------
-
-# Overview
-
-Pin provides:
-
--   Structured Knowledge Base ingestion
--   Local offline vector database (no external API required)
--   Optional Gemini embeddings via Google AI Studio
--   Admin-switchable RAG backend (Local ↔ Gemini)
--   Enforced support boundaries based on KB structure
--   Automatic escalation for unsupported systems
--   Multi-organization support
+This project is built for real operational environments, not just local
+demos.
 
 ------------------------------------------------------------------------
 
-# Architecture
+# Features
 
-    User
-      ↓
-    FastAPI (app.main)
-      ↓
-    Support Scope Validator (device / OS / app check)
-      ↓
-    RAG Retrieval Layer
-          ↙              ↘
-     Local Vector DB     Gemini Vector DB
-     (sqlite-vec)        (Google AI Studio)
-          ↓
-    LLM Response
-      ↓
-    Escalation Logic (if unsupported or no match)
-
-Key components:
-
--   `app/main.py` --- API entry point
--   `app/rag/` --- ingestion, indexing, retrieval
--   `app/knowledge/` --- support scope enforcement
--   `knowledge/` --- structured KB source
--   SQLite DB --- metadata + vector storage
+-   FastAPI backend with session state
+-   Required-question gate (structured intake before troubleshooting)
+-   RAG over markdown KB files
+-   Ticket escalation when confidence is low
+-   Pluggable LLM providers:
+    -   Mock (offline deterministic)
+    -   OpenAI-compatible
+    -   Gemini
+-   Encrypted per-LLM API key storage (Fernet)
+-   Admin UI for LLM configuration
+-   Bootstrap initialization flow
+-   Demo state + runtime state separation
+-   Systemd service support
+-   Nightly rebuild automation
+-   Makefile task orchestration
 
 ------------------------------------------------------------------------
 
-# Knowledge Base Structure (Required)
+# Architecture Overview
 
-The knowledge base must follow this directory layout:
+    app/
+      core/        auth, crypto, config store, session state
+      flows/       required-question engine
+      rag/         TF-IDF retrieval
+      llm/         provider abstraction
+      policies/    escalation + guardrails
+      models/      pydantic schemas
 
-    knowledge/<device_type>/<operating_system>/<application>/<issue>.md
+    knowledge/     live runtime KB
+    demo/          version-controlled demo snapshot
+    data/          runtime database + encryption key (ignored by git)
+    scripts/       install + update + demo prep automation
+    configs/       flow definitions
 
-Example:
+------------------------------------------------------------------------
+
+# Installation (First-Time Setup)
+
+``` bash
+sudo ./scripts/install.sh
+```
+
+This will:
+
+-   Install OS dependencies
+-   Create `.venv`
+-   Install Python requirements
+-   Restore demo DB (if present)
+-   Rebuild KB index
+-   Install and enable `pin.service`
+-   Start the API
+
+Service runs on:
+
+    http://localhost:8000
+
+Check status:
+
+``` bash
+sudo systemctl status pin.service
+```
+
+View logs:
+
+``` bash
+sudo journalctl -u pin.service -n 200 --no-pager
+```
+
+------------------------------------------------------------------------
+
+# Makefile Commands
+
+Pin includes operational shortcuts:
+
+``` bash
+make prep         # Snapshot live state into demo/ (sanitized)
+make install      # First-time setup
+make nightly      # Run nightly update manually
+make demo-reset   # Reset to bootstrap state
+make health       # API health check
+```
+
+------------------------------------------------------------------------
+
+# Demo Snapshot Workflow (Before Git Push)
+
+Before committing changes:
+
+``` bash
+make prep
+git status
+git add .
+git commit -m "Update demo snapshot + feature"
+git push
+```
+
+`make prep`:
+
+-   Copies live DB → demo DB
+-   Removes encrypted API keys
+-   Copies live KB → demo KB
+-   Prevents secret leakage
+
+------------------------------------------------------------------------
+
+# Nightly Update Process
+
+`scripts/pin-nightly-update.sh`:
+
+1.  Backup `/projects/Pin`
+2.  Pull latest repo
+3.  Rebuild `.venv` dependencies
+4.  Restore demo DB + KB
+5.  Rebuild KB index
+6.  Restart service
+7.  Health check
+
+This guarantees consistent demo state.
+
+------------------------------------------------------------------------
+
+# Bootstrap Mode
+
+If no database exists, Pin routes to a setup page:
+
+-   Create initial admin user
+-   Select LLM provider
+-   Store encrypted API key
+-   Mark system initialized
+
+------------------------------------------------------------------------
+
+# LLM Configuration
+
+LLMs are configured via Admin UI.
+
+Supported providers:
+
+-   mock
+-   openai
+-   gemini
+
+Each provider:
+
+-   Stores its own encrypted API key
+-   Can be switched dynamically
+
+Encryption:
+
+-   Fernet symmetric encryption
+-   Key stored in `data/secret.key`
+-   Never committed to git
+
+------------------------------------------------------------------------
+
+# Knowledge Base (RAG)
+
+Add markdown files to:
 
     knowledge/
-      laptop-notebook/
-        windows-11/
-          outlook/
-            profile-corruption.md
 
-## Supported Devices
+Then rebuild index:
 
-Only device types present as directories under `/knowledge` are
-supported.
-
-Default expected device types:
-
--   mobile\
--   tablet\
--   laptop-notebook\
--   desktop\
-
-If a user requests support for:
-
--   A device type not present
--   An OS not under that device
--   An application not under that OS
-
-The request is automatically escalated as **unsupported**.
-
-To add support:
-
-1.  Create appropriate folder structure
-2.  Add markdown KB files
-3.  Re-ingest via Admin panel
-
-------------------------------------------------------------------------
-
-# RAG Backends
-
-Pin supports two embedding backends.
-
-## 1. Local (Default / Offline Mode)
-
--   Uses sqlite-vec
--   Deterministic embeddings
--   No external API calls
--   Fully functional offline
-
-Vector table:
-
-    kb_vec_local
-
-Recommended for:
-
--   Air-gapped environments
--   No external dependencies
--   Secure internal deployments
-
-------------------------------------------------------------------------
-
-## 2. Gemini (Optional)
-
-If a Gemini API key is configured:
-
--   Embeddings generated via Google AI Studio
--   Higher dimensional vectors
--   Stored in:
-
-```{=html}
-<!-- -->
+``` bash
+python scripts/ingest_kb.py
 ```
-    kb_vec_gemini
-
-If no Gemini key is configured, system defaults to Local backend.
 
 ------------------------------------------------------------------------
 
-# Switching RAG Backend
+# Security Model
 
-Admin interface:
-
-    Admin → RAG Settings
-
-Available actions:
-
--   Select backend (`local` or `gemini`)
--   Save configuration
--   Re-ingest knowledge base
-
-API:
-
-    GET  /api/admin/rag
-    PUT  /api/admin/rag
-    POST /api/admin/kb/reingest
-
-Backend selection is stored per organization and applies immediately.
+-   Encrypted API keys
+-   Secrets excluded via `.gitignore`
+-   Role-based admin access
+-   No KB match → escalation
+-   Guardrails against unsafe advice
 
 ------------------------------------------------------------------------
 
-# Re-ingesting the Knowledge Base
+# Development Philosophy
 
-Re-ingestion is required when:
+Pin is built as:
 
--   Adding or modifying KB files
--   Changing backend
--   Updating supported device scope
-
-Admin UI button:
-
-**Re-ingest Knowledge Base**
-
-API:
-
-    POST /api/admin/kb/reingest
-
-Re-ingestion:
-
--   Traverses `/knowledge`
--   Parses markdown
--   Chunks content
--   Generates embeddings
--   Populates selected vector table
+-   A reproducible service
+-   A company-scoped support assistant
+-   A capstone-ready but production-minded project
+-   A foundation for future enterprise integration (ITSM, OIDC, vector
+    DB)
 
 ------------------------------------------------------------------------
 
-# Escalation Logic
+# Future Enhancements
 
-Pin escalates automatically when:
-
--   Device type unsupported
--   OS unsupported
--   Application unsupported
--   No sufficient KB match found
--   User explicitly requests escalation
-
-This prevents hallucinated support and enforces scope control.
-
-------------------------------------------------------------------------
-
-# Deployment
-
-## Requirements
-
--   Python 3.10+
--   SQLite
--   sqlite-vec extension
--   Optional: Gemini API key
-
-------------------------------------------------------------------------
-
-## Install
-
-    git clone https://github.com/joshsimp-uw/Pin.git
-    cd Pin
-    make install
-
-------------------------------------------------------------------------
-
-## Run
-
-    uvicorn app.main:app --host 0.0.0.0 --port 8000
-
-Access:
-
-    http://<server>:8000
-
-------------------------------------------------------------------------
-
-# Environment Configuration
-
-Create a `.env` file in project root.
-
-## `.env.example`
-
-    # Server
-    HOST=0.0.0.0
-    PORT=8000
-
-    # Database
-    DATABASE_PATH=data/pin.db
-
-    # Admin
-    ADMIN_TOKEN=change_this_to_secure_value
-
-    # Gemini (optional)
-    GEMINI_API_KEY=
-
-    # Default RAG Backend
-    DEFAULT_RAG_BACKEND=local
-
-Notes:
-
--   If `GEMINI_API_KEY` is empty, system defaults to Local backend.
--   Backend can still be switched via Admin UI.
-
-------------------------------------------------------------------------
-
-# Database Tables (RAG)
-
-Local embeddings:
-
-    kb_vec_local
-
-Gemini embeddings:
-
-    kb_vec_gemini
-
-Both tables may coexist. Switching does not require schema changes.
-
-------------------------------------------------------------------------
-
-# Production Hardening Recommendations
-
-## 1. Reverse Proxy
-
-Use:
-
--   Nginx
--   Caddy
--   Traefik
-
-Terminate TLS at proxy and forward to uvicorn internally.
-
-## 2. TLS
-
-Use valid certificates (Let's Encrypt or internal PKI).
-
-Never expose plain HTTP publicly.
-
-## 3. Secure Admin Token
-
--   Change `ADMIN_TOKEN`
--   Store securely
--   Do not commit real tokens to repo
-
-## 4. Restrict Network Access
-
-If internal-only:
-
--   Bind to private IP
--   Restrict firewall to trusted subnets
--   Place behind VPN if needed
-
-## 5. Disable Gemini in Restricted Environments
-
-If operating air-gapped:
-
--   Ensure `GEMINI_API_KEY` is unset
--   Use local backend only
-
-## 6. Regular Backups
-
-Back up:
-
--   SQLite database
--   `/knowledge` directory
-
-------------------------------------------------------------------------
-
-# Development Notes
-
--   Backend selection is per-organization.
--   Vector tables are created automatically if missing.
--   Metadata inferred from folder path:
-    -   category → device/os/application
-    -   service → application
-    -   tags → device, OS, application
--   Front-matter overrides supported.
-
-------------------------------------------------------------------------
-
-# Project Intent
-
-Pin is built to:
-
--   Reduce helpdesk workload
--   Enforce supported device boundaries
--   Provide deterministic troubleshooting
--   Operate fully offline if required
--   Escalate cleanly when out-of-scope
+-   Replace TF-IDF with embeddings + vector DB
+-   ITSM integration (ServiceNow / Jira / Zendesk)
+-   Multi-org isolation
+-   Audit logging
+-   OIDC authentication
+-   Automated test suite

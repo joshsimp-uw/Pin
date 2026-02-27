@@ -28,6 +28,9 @@ update:
 	@echo "Installing requirements..."
 	@. .venv/bin/activate && pip install -r requirements.txt || { echo "pip install failed"; exit 1; }
 
+	@echo "Migrating database schema (if needed)..."
+	@sudo .venv/bin/python scripts/migrate_db.py --sqlite-path data/pin.db || { echo "DB migration failed"; exit 1; }
+
 	@echo "Restarting service..."
 	@sudo systemctl restart $(SERVICE) || { echo "Service restart failed"; exit 1; }
 

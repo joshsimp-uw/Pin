@@ -22,10 +22,7 @@
 
         <div class="header-right">
           <span class="badge" id="userBadge">Signed in</span>
-           <!-- Admin button (only shown to admins by app.js) -->
-            <button id="adminBtn" class="btn secondary" type="button" style="display:none;">
-            Admin
-            </button>
+          <button id="adminBtn" class="btn secondary" type="button" style="display:none;">Admin</button>
           <button id="logoutBtn" class="btn secondary" type="button">Logout</button>
         </div>
       </div>
@@ -35,26 +32,38 @@
       <div class="container shell">
         <aside class="card sidebar">
           <div class="nav" role="navigation" aria-label="Primary navigation">
-            <button class="active" data-view="newIssue">
-              <span>New Issue</span>
-              <span class="count" id="countOpenChats" style="display:none">0</span>
+            <button data-view="home" class="active">
+              <span>Home</span>
+              <span class="count">🏠</span>
+            </button>
+
+            <button data-view="newIssue">
+              <span>New Chat</span>
+              <span class="count">＋</span>
             </button>
 
             <div class="sidebar-section-title">Chats</div>
 
             <button data-view="openChats">
-              <span>Open Chats</span>
+              <span>Open</span>
               <span class="count" id="countOpenChats2">0</span>
             </button>
 
-            <button data-view="createdTickets">
-              <span>Created Tickets</span>
+            <button data-view="closedChats">
+              <span>Closed</span>
+              <span class="count" id="countClosed">0</span>
+            </button>
+
+            <div class="sidebar-section-title">Tickets</div>
+
+            <button data-view="openTickets">
+              <span>Open</span>
               <span class="count" id="countTickets">0</span>
             </button>
 
             <button data-view="closedTickets">
-              <span>Closed Tickets</span>
-              <span class="count" id="countClosed">0</span>
+              <span>Closed</span>
+              <span class="count" id="countClosedTickets">0</span>
             </button>
 
             <div class="hr"></div>
@@ -67,9 +76,7 @@
 
         <section class="card main">
           <div class="main-grid">
-            <div class="panel" id="primaryPanel">
-              <!-- content injected by app.js -->
-            </div>
+            <div class="panel" id="primaryPanel"></div>
 
             <aside class="panel" id="contextPanel">
               <h3>Session Context</h3>
@@ -79,7 +86,7 @@
 
               <h3>Pin Status</h3>
               <div class="small">
-                Prototype mode. Backend integration points are stubbed (see <span class="mono">docs/</span>).
+                Prototype mode. Chats and tickets are stored server-side per user.
               </div>
               <div style="margin-top:10px">
                 <img src="./assets/pin-ticket.png" alt="Pin mascot with ticket" style="width:100%;height:auto;border-radius:12px;border:1px solid var(--border)" />
@@ -93,8 +100,8 @@
     <footer>
       <div class="container footer-inner">
         <div class="footer-left">
-          <div class="small"><strong>Meta</strong>: Project <span class="mono">Pin</span> • UI Prototype • Build: <span class="mono" id="buildDate"></span></div>
-          <div class="small">Company: <span class="mono" id="companyMeta">ACME</span> • User: <span class="mono" id="userMeta"></span> • Storage: <span class="mono">localStorage</span></div>
+          <div class="small"><strong>Meta</strong>: Project <span class="mono">Pin</span> • UI • Build: <span class="mono" id="buildDate"></span></div>
+          <div class="small">Company: <span class="mono" id="companyMeta">ACME</span> • User: <span class="mono" id="userMeta"></span> • Storage: <span class="mono">SQLite</span></div>
         </div>
         <div class="footer-right">
           <div class="small"><strong>ACME IT</strong> Help Desk: (555) 010-4242 • helpdesk@acme.example</div>

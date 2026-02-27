@@ -4,6 +4,7 @@ import sqlite3
 from pathlib import Path
 
 from app.core.config import settings
+from app.core.migrations import run_migrations
 
 
 def connect() -> sqlite3.Connection:
@@ -51,6 +52,8 @@ def init_schema(schema_path: str = "data/schema.sql") -> None:
                 pass
 
         conn.executescript(sql)
+        # Apply idempotent migrations for older DBs
+        run_migrations(conn)
         conn.commit()
     finally:
         conn.close()

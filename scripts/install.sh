@@ -87,6 +87,14 @@ PY
 
   chown -R "${PIN_USER}:${PIN_USER}" "${REPO_DIR}/data" || true
   chown -R "${PIN_USER}:${PIN_USER}" "${LIVE_KB}" || true
+
+  # Multi-user friendly permissions:
+  # - Ensure group write for shared admin workflows
+  # - Set SGID bit so new files inherit the directory group
+  chmod -R g+rwX "${REPO_DIR}/data" || true
+  chmod -R g+rwX "${LIVE_KB}" || true
+  chmod g+s "${REPO_DIR}/data" || true
+  chmod g+s "${LIVE_KB}" || true
 }
 
 create_venv_and_install() {

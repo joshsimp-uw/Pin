@@ -17,7 +17,7 @@ update:
 	@git pull || { echo "Git pull failed"; exit 1; }
 
 	@if [ -f "/etc/pin/pin.env" ]; then \
-		grep -qE '^\s*TIER1_SECRET_KEY=' /etc/pin/pin.env || echo "WARNING: /etc/pin/pin.env missing TIER1_SECRET_KEY (provider key decryption may fail). Run 'make install' or add it."; \
+		sudo grep -qE '^\s*TIER1_SECRET_KEY=' /etc/pin/pin.env || echo "WARNING: /etc/pin/pin.env missing TIER1_SECRET_KEY (provider key decryption may fail). Run 'make install' or add it."; \
 	fi
 
 	@if [ ! -d ".venv" ]; then \

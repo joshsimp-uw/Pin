@@ -99,16 +99,25 @@ async def _embed_gemini(texts: list[str], *, org_id: str) -> list[list[float]]:
     if not api_key:
         raise LLMError("Gemini API key is required for Gemini embeddings")
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_embed_model}:embedContent?key={api_key}"
+    # Prefer header-based auth (see Gemini REST docs). Keeping secrets out of
+    # URLs helps with proxy logs and certain WAF policies.
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_embed_model}:embedContent"
+
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": api_key,
+    }
 
     timeout = httpx.Timeout(settings.llm_timeout_s)
     out: list[list[float]] = []
     async with httpx.AsyncClient(timeout=timeout) as client:
         for t in texts:
             payload = {"content": {"parts": [{"text": t}]}}
-            r = await client.post(url, json=payload)
+            r = await client.post(url, headers=headers, json=payload)
             if r.status_code >= 400:
-                raise LLMError(f"Gemini embed failed: {r.status_code} {r.text[:500]}")
+                raise LLMError(
+                    f"Gemini embed failed: {r.status_code} {r.text[:500]} (model={settings.gemini_embed_model})"
+                )
             data = r.json()
             try:
                 out.append(_normalize(list(data["embedding"]["values"])))

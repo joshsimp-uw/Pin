@@ -33,10 +33,11 @@ class GeminiLLM(BaseLLM):
             text = str(m.get("content", ""))
             contents.append({"role": gem_role, "parts": [{"text": text}]})
 
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
-            f"?key={self.api_key}"
-        )
+        # NOTE: The Gemini REST docs recommend passing the API key via the
+        # x-goog-api-key header rather than as a query param. Some environments
+        # (proxies/WAFs) block long URLs with query secrets, so we keep the URL
+        # clean and send the key in a header.
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
         payload: dict[str, Any] = {
             "contents": contents,
             "generationConfig": {
@@ -44,12 +45,21 @@ class GeminiLLM(BaseLLM):
             },
         }
 
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key,
+        }
+
         timeout = httpx.Timeout(settings.llm_timeout_s)
         async with httpx.AsyncClient(timeout=timeout) as client:
-            r = await client.post(url, json=payload)
+            r = await client.post(url, headers=headers, json=payload)
 
         if r.status_code >= 400:
-            raise LLMError(f"Gemini call failed: {r.status_code} {r.text[:500]}")
+            # Common failure modes:
+            #  - 401/403: key invalid or API not enabled
+            #  - 404: model name not found for this API version
+            #  - 429: quota / rate limit
+            raise LLMError(f"Gemini call failed: {r.status_code} {r.text[:500]} (model={self.model})")
 
         data = r.json()
         try:

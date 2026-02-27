@@ -8,6 +8,7 @@ from app.api.deps import require_admin_from_auth_header
 from app.core.config import settings
 from app.core.config_store import list_llm_providers, get_setting, set_setting, upsert_llm_provider
 from app.core.repository import ensure_org
+from app.llm.providers import get_llm, LLMError
 from app.llm.embeddings import get_active_rag_backend, set_active_rag_backend
 from app.rag.ingest import ingest_kb_dir, ensure_kb_fresh
 from app.rag.vec_store import connect_vec
@@ -87,6 +88,60 @@ def admin_llm_get(authorization: str | None = Header(default=None)) -> dict:
             upsert_llm_provider(org_id=u.org_id, provider=prov, model=model, api_key_plain=None)
     providers = list_llm_providers(u.org_id)
     return {"active": active, "providers": providers}
+
+
+@router.get("/api/admin/diagnostics")
+async def admin_diagnostics(authorization: str | None = Header(default=None)) -> dict:
+    """Run lightweight diagnostics for LLM + RAG (admin-only).
+
+    This endpoint is meant for debugging deployments where the chat route is
+    failing (e.g., Gemini connectivity) or where it's unclear if the KB has
+    been ingested.
+    """
+    u = require_admin_from_auth_header(authorization)
+
+    # --- DB stats ---
+    conn = connect_vec()
+    try:
+        docs = int(conn.execute("SELECT COUNT(*) AS n FROM kb_documents").fetchone()["n"])
+        chunks = int(conn.execute("SELECT COUNT(*) AS n FROM kb_chunks").fetchone()["n"])
+        # vec tables may not exist yet
+        def safe_count(table: str) -> int:
+            try:
+                return int(conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"])
+            except Exception:
+                return 0
+
+        vec_local = safe_count("kb_vec_local")
+        vec_gemini = safe_count("kb_vec_gemini")
+    finally:
+        conn.close()
+
+    # --- RAG backend ---
+    rag_backend = get_active_rag_backend(u.org_id)
+
+    # --- LLM ping ---
+    llm_provider: str = "unknown"
+    llm_ok = False
+    llm_error: str | None = None
+    try:
+        llm = get_llm(org_id=u.org_id)
+        llm_provider = llm.__class__.__name__
+        _ = await llm.chat(
+            [
+                {"role": "system", "content": "You are a health check."},
+                {"role": "user", "content": "Reply with the single word: OK"},
+            ]
+        )
+        llm_ok = True
+    except LLMError as e:
+        llm_error = str(e)
+
+    return {
+        "org_id": u.org_id,
+        "rag": {"active_backend": rag_backend, "kb_docs": docs, "kb_chunks": chunks, "vec_local": vec_local, "vec_gemini": vec_gemini},
+        "llm": {"impl": llm_provider, "ok": llm_ok, "error": llm_error},
+    }
 
 
 @router.put("/api/admin/llm")

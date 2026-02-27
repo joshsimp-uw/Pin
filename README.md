@@ -46,7 +46,8 @@ demos.
 
     knowledge/     live runtime KB
     demo/          version-controlled demo snapshot
-    data/          runtime database + encryption key (ignored by git)
+    data/          runtime database (ignored by git)
+    /etc/pin/pin.env  systemd EnvironmentFile (includes TIER1_SECRET_KEY master encryption key)
     scripts/       install + update + demo prep automation
     configs/       flow definitions
 
@@ -67,6 +68,11 @@ This will:
 -   Rebuild KB index
 -   Install and enable `pin.service`
 -   Start the API
+
+It also ensures a **master encryption key** exists at `/etc/pin/pin.env` as
+`TIER1_SECRET_KEY`. This key is used to encrypt provider API keys stored in the
+database. (A file-based fallback key at `data/secret.key` is only used for
+local/dev if `TIER1_SECRET_KEY` is not set.)
 
 Service runs on:
 
@@ -96,6 +102,7 @@ make install      # First-time setup
 make nightly      # Run nightly update manually
 make demo-reset   # Reset to bootstrap state
 make health       # API health check
+make rotate-master-key  # Rotate TIER1_SECRET_KEY and re-encrypt stored provider keys
 ```
 
 ------------------------------------------------------------------------

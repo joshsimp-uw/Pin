@@ -63,8 +63,26 @@ create_dirs() {
 # TIER1_CORS_ORIGINS=https://pin.example.com
 # TIER1_DEMO_SEED=false
 # TIER1_SESSION_TTL_SECONDS=28800
+# Crypto
+# TIER1_SECRET_KEY=<urlsafe base64 32-byte key>  # master key used to encrypt stored provider API keys
 ENVEOF
     chmod 600 /etc/pin/pin.env
+  fi
+
+  # Ensure the master encryption key exists (KEK pattern). This key is used to
+  # encrypt provider API keys stored in the DB. We keep it outside the repo and
+  # load it via systemd EnvironmentFile.
+  if ! grep -qE '^\s*TIER1_SECRET_KEY=' /etc/pin/pin.env; then
+    log "Generating TIER1_SECRET_KEY and writing to /etc/pin/pin.env ..."
+    SECRET_KEY="$(${PYTHON_BIN} - <<'PY'
+import base64, os
+print(base64.urlsafe_b64encode(os.urandom(32)).decode('utf-8'))
+PY
+)"
+    echo "TIER1_SECRET_KEY=${SECRET_KEY}" >> /etc/pin/pin.env
+    chmod 600 /etc/pin/pin.env
+  else
+    log "TIER1_SECRET_KEY already present in /etc/pin/pin.env"
   fi
 
   chown -R "${PIN_USER}:${PIN_USER}" "${REPO_DIR}/data" || true

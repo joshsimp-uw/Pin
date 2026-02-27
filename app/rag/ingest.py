@@ -305,9 +305,27 @@ async def ingest_kb_dir(kb_dir: Path, *, org_id: str = "ACME") -> dict[str, int]
 
         texts = [t for _, t in chunk_payloads]
         batch_size = 16
-        embeddings: list[list[float]] = []
-        for i in range(0, len(texts), batch_size):
-            embeddings.extend(await embed_texts(texts[i : i + batch_size], org_id=org_id, backend=backend))
+
+        async def _compute_embeddings(selected_backend: str) -> list[list[float]]:
+            embs: list[list[float]] = []
+            for i in range(0, len(texts), batch_size):
+                embs.extend(await embed_texts(texts[i : i + batch_size], org_id=org_id, backend=selected_backend))
+            return embs
+
+        # NOTE: "make install" often runs before any provider keys are configured.
+        # If the active backend is "gemini" but the key is missing/invalid, fall
+        # back to local embeddings so installation and KB ingestion still succeed.
+        try:
+            embeddings = await _compute_embeddings(backend)
+        except Exception as e:
+            from app.llm.providers import LLMError
+
+            if backend == "gemini" and isinstance(e, LLMError):
+                backend = "local"
+                ensure_vec_schema(conn, backend=backend)
+                embeddings = await _compute_embeddings(backend)
+            else:
+                raise
 
         cur = conn.cursor()
         for (chunk_id, _), emb in zip(chunk_payloads, embeddings):

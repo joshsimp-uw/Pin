@@ -52,7 +52,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # Routes
 app.include_router(health_router)
 app.include_router(auth_router)
@@ -63,7 +62,7 @@ app.include_router(chat_router)
 
 @app.on_event("startup")
 async def _startup() -> None:
-    # Create/upgrade schema for this org site's SQLite database.
+    # Create/upgrade schema
     init_schema()
 
     org_id = (getattr(settings, "default_org_id", "ACME") or "ACME").strip() or "ACME"
@@ -71,33 +70,9 @@ async def _startup() -> None:
     # Optional demo seeding (OFF by default). Enable with:
     #   TIER1_DEMO_SEED=true
     if bool(getattr(settings, "demo_seed", False)):
-        # Do not auto-create orgs here; missing org means not initialized.
-        # User IDs are emails for simplicity.
-        ensure_user(
-            org_id=org_id,
-            user_id="john.doe@acme.com",
-            first_name="John",
-            last_name="Doe",
-            email="john.doe@acme.com",
-            role="end_user",
-        )
-        ensure_user(
-            org_id=org_id,
-            user_id="jane.doe@acme.com",
-            first_name="Jane",
-            last_name="Doe",
-            email="jane.doe@acme.com",
-            role="end_user",
-        )
-        ensure_user(
-            org_id=org_id,
-            user_id="admin.doe@acme.com",
-            first_name="Admin",
-            last_name="Doe",
-            email="admin.doe@acme.com",
-            role="admin",
-        )
-        # Set/update their passwords.
+        ensure_user(org_id=org_id, user_id="john.doe@acme.com", first_name="John", last_name="Doe", email="john.doe@acme.com", role="end_user")
+        ensure_user(org_id=org_id, user_id="jane.doe@acme.com", first_name="Jane", last_name="Doe", email="jane.doe@acme.com", role="end_user")
+        ensure_user(org_id=org_id, user_id="admin.doe@acme.com", first_name="Admin", last_name="Doe", email="admin.doe@acme.com", role="admin")
         for uid in ["john.doe@acme.com", "jane.doe@acme.com", "admin.doe@acme.com"]:
             set_user_password(user_id=uid, password="Passw0rd!")
 

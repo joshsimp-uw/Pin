@@ -52,6 +52,21 @@ create_dirs() {
   mkdir -p "${REPO_DIR}/data"
   mkdir -p "${LIVE_KB}"
 
+  # Runtime env (secrets/config). Not overwritten if it already exists.
+  mkdir -p /etc/pin
+  if [ ! -f /etc/pin/pin.env ]; then
+    cat > /etc/pin/pin.env <<ENVEOF
+# Pin service configuration (Environment variables are prefixed with TIER1_)
+# Example:
+# TIER1_ENVIRONMENT=prod
+# TIER1_ADMIN_TOKEN=change-me
+# TIER1_CORS_ORIGINS=https://pin.example.com
+# TIER1_DEMO_SEED=false
+# TIER1_SESSION_TTL_SECONDS=28800
+ENVEOF
+    chmod 600 /etc/pin/pin.env
+  fi
+
   chown -R "${PIN_USER}:${PIN_USER}" "${REPO_DIR}/data" || true
   chown -R "${PIN_USER}:${PIN_USER}" "${LIVE_KB}" || true
 }
@@ -111,6 +126,13 @@ Type=simple
 User=${PIN_USER}
 WorkingDirectory=${REPO_DIR}
 Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/pin/pin.env
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=${REPO_DIR}/data ${LIVE_KB}
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 ExecStart=${VENV_DIR}/bin/python -m uvicorn app.main:app --host ${HOST} --port ${PORT}
 Restart=on-failure
 RestartSec=3

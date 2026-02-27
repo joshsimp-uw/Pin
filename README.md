@@ -215,3 +215,19 @@ Pin is built as:
 -   Audit logging
 -   OIDC authentication
 -   Automated test suite
+
+
+## Configuration (env vars)
+
+All runtime configuration uses `TIER1_` environment variables (see `app/core/config.py`).
+
+New/important options:
+
+- `TIER1_DEMO_SEED` (bool, default `false`): seed the ACME demo org/users on startup.
+- `TIER1_DEFAULT_ORG_ID` (string, default `ACME`): org used for KB ingest + demo seed.
+- `TIER1_SESSION_TTL_SECONDS` (int, default `28800`): bearer token TTL.
+- `TIER1_CORS_ORIGINS` (comma-separated list): allowed browser origins (ex: `http://localhost:8000,https://pin.example.com`)
+- `TIER1_BOOTSTRAP_ENABLED` (bool, default `true`): enable/disable `/api/bootstrap/*`.
+
+Bootstrap security:
+- If `TIER1_ENVIRONMENT` is **not** `dev`, `/api/bootstrap/setup` requires `X-Admin-Token` matching `TIER1_ADMIN_TOKEN`.

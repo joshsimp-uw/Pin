@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from cryptography.fernet import InvalidToken
+
 from app.core.crypto import decrypt_str, encrypt_str
 from app.core.db import connect
 
@@ -107,7 +109,13 @@ def get_llm_provider_config(org_id: str, provider: str) -> dict[str, Any] | None
         ).fetchone()
         if not r:
             return None
-        api_key = decrypt_str(r["api_key_enc"]) if r["api_key_enc"] else None
+        api_key = None
+        if r["api_key_enc"]:
+            try:
+                api_key = decrypt_str(r["api_key_enc"])
+            except InvalidToken:
+                # Stale ciphertext (encrypted with a different master key). Treat as missing.
+                api_key = None
         return {"provider": r["provider"], "model": r["model"], "api_key": api_key}
     finally:
         conn.close()

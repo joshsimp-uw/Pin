@@ -181,8 +181,24 @@ async def rebuild_vectors_from_db(*, backend: str, org_id: str = "ACME") -> dict
 
         batch_size = 16
         embeddings: list[list[float]] = []
+        try:
+    for i in range(0, len(texts), batch_size):
+        embeddings.extend(await embed_texts(texts[i : i + batch_size], org_id=org_id, backend=backend))
+except Exception as e:
+    # If Gemini embeddings fail (missing/invalid key, quota, etc.), fall back to local so startup/install
+    # isn't held hostage by external credentials.
+    from app.llm.providers import LLMError
+    if backend == "gemini" and isinstance(e, LLMError):
+        backend = "local"
+        ensure_vec_schema(conn, backend=backend)
+        table = "kb_vec_local"
+        conn.execute(f"DELETE FROM {table}")
+        conn.commit()
+        embeddings = []
         for i in range(0, len(texts), batch_size):
             embeddings.extend(await embed_texts(texts[i : i + batch_size], org_id=org_id, backend=backend))
+    else:
+        raise
 
         cur = conn.cursor()
         for cid, emb in zip(chunk_ids, embeddings):
@@ -191,7 +207,7 @@ async def rebuild_vectors_from_db(*, backend: str, org_id: str = "ACME") -> dict
                 (cid, struct.pack("%sf" % len(emb), *emb)),
             )
         conn.commit()
-        return {"chunks": len(rows), "vectors": len(rows)}
+        return {"chunks": len(rows), "vectors": len(rows), "backend_used": backend}
     finally:
         conn.close()
 
@@ -380,8 +396,9 @@ async def ensure_kb_fresh(kb_dir: Path, *, org_id: str = "ACME") -> dict[str, in
 
     if stored_backend != backend:
         stats = await rebuild_vectors_from_db(backend=backend, org_id=org_id)
+        used_backend = str(stats.get("backend_used") or backend)
         try:
-            _set_kb_state("kb_last_backend", str(backend))
+            _set_kb_state("kb_last_backend", used_backend)
         except Exception:
             pass
         return {"files": 0, "docs": doc_count, **stats}

@@ -1,16 +1,34 @@
-.PHONY: prep demo-reset install nightly health
+PORT ?= 8000
+SERVICE ?= pin
+
+.PHONY: prep install demo-reset update health
 
 prep:
-	./scripts/pin-git-push-prep.sh
-
-demo-reset:
-	sudo ./scripts/pin-reset-bootstrap.sh
+	bash ./scripts/pin-git-push-prep.sh
 
 install:
-	sudo ./scripts/install.sh
+	sudo bash ./scripts/install.sh
 
-nightly:
-	sudo ./scripts/pin-nightly-update.sh
+demo-reset:
+	sudo bash ./scripts/pin-reset-bootstrap.sh
+
+update:
+	@echo "Updating Pin..."
+	@git pull || { echo "Git pull failed"; exit 1; }
+
+	@if [ ! -d ".venv" ]; then \
+		echo "No virtual environment found. Run 'make install' first."; \
+		exit 1; \
+	fi
+
+	@echo "Installing requirements..."
+	@. .venv/bin/activate && pip install -r requirements.txt || { echo "pip install failed"; exit 1; }
+
+	@echo "Restarting service..."
+	@sudo systemctl restart $(SERVICE) || { echo "Service restart failed"; exit 1; }
+
+	$(MAKE) health
 
 health:
-	curl -fsS http://127.0.0.1:8000/health && echo "OK"
+	@echo "Checking health on port $(PORT)..."
+	@curl -fsS http://localhost:$(PORT)/health && echo "\nOK" || { echo "Health check failed"; exit 1; }

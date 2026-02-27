@@ -9,12 +9,12 @@ from fastapi import APIRouter, Header, HTTPException
 from app.api.deps import bearer_token
 from app.core.auth import require_user
 from app.core.config import settings
-from app.core.repository import ensure_org, ensure_user, insert_message, insert_ticket
+from app.core.repository import ensure_org, ensure_user, insert_message, insert_ticket, link_session_to_ticket, close_session, set_session_title
 from app.core.session import SessionState, load_session, new_session, save_session
 from app.flows.engine import question_for, registry, next_missing_field
 from app.knowledge.support import is_supported_request
 from app.llm.providers import LLMError, get_llm
-from app.models.schemas import AnswerResponse, ChatRequest, ChatResponse, Ticket, TicketResponse
+from app.models.schemas import AnswerResponse, ActionResponse, Action, ChatRequest, ChatResponse, Ticket, TicketResponse
 from app.policies.guardrails import check_response, should_escalate
 from app.rag.index import retrieve
 
@@ -388,6 +388,8 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
     state = load_session(req.session_id) if req.session_id else new_session(org_id=u.org_id, user_id=u.user_id)
     if state.org_id != u.org_id or state.user_id != u.user_id:
         raise HTTPException(status_code=403, detail="Session does not belong to the current user")
+    if state.status != "open":
+        raise HTTPException(status_code=400, detail="Chat is closed. Start a new chat to continue.")
     state.turns += 1
 
     # Categorize once (sticky)
@@ -402,7 +404,71 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
     # Persist user message (chat transcript)
     insert_message(session_id=state.session_id, role="user", content=req.message)
 
+    # Set a chat title from the first meaningful user message (UI convenience)
+    if not state.title:
+        first = req.message.strip().split("\n", 1)[0].strip()
+        if first:
+            state.title = first[:80]
+            try:
+                set_session_title(state.session_id, state.title)
+            except Exception:
+                pass
+
+    # Handle any pending action prompts (escalate/close)
+    pending = (state.collected or {}).get("_pending_action")
+    if pending:
+        msg = req.message.strip().lower()
+        yes = msg in {"y","yes","yeah","yep","ok","okay","sure","do it","please"} or msg.startswith("yes")
+        no = msg in {"n","no","nope","not now","cancel"} or msg.startswith("no")
+        if yes:
+            if pending.get("type") == "close_chat":
+                close_session(state.session_id)
+                state.status = "closed"
+                state.collected.pop("_pending_action", None)
+                save_session(state)
+                return AnswerResponse(message="Closed this chat. If you need anything else, start a new issue.", citations=[], collected=state.collected)
+            if pending.get("type") == "escalate_to_ticket":
+                draft = pending.get("draft") or {}
+                ticket = Ticket(**draft)
+                rendered = _render_ticket(ticket)
+                ticket_id = insert_ticket(
+                    org_id=u.org_id,
+                    user_id=u.user_id,
+                    session_id=state.session_id,
+                    summary=ticket.summary,
+                    category=ticket.category,
+                    impact=ticket.impact,
+                    urgency=ticket.urgency,
+                    escalation_reason=ticket.escalation_reason,
+                    rendered_text=rendered,
+                    diagnostics=ticket.diagnostics,
+                    steps_attempted=ticket.steps_attempted,
+                    citations=[c.model_dump() for c in ticket.citations],
+                )
+                link_session_to_ticket(state.session_id, ticket_id)
+                state.ticket_id = ticket_id
+                state.collected.pop("_pending_action", None)
+                save_session(state)
+        if no:
+            state.collected.pop("_pending_action", None)
+            save_session(state)
+        else:
+            # Ask again without progressing the flow
+            prompt = str(pending.get("prompt") or "Please reply yes or no.")
+            insert_message(session_id=state.session_id, role="assistant", content=prompt)
+            save_session(state)
+            return ActionResponse(message=prompt, actions=[Action(action_id="yes", label="Yes"), Action(action_id="no", label="No")], meta={"pending": pending.get("type")})
+
     # Gate: required fields
+    # If the user indicates the issue is resolved, offer to close the chat.
+    msg_l = req.message.strip().lower()
+    if any(k in msg_l for k in ["resolved", "fixed", "that worked", "solved", "thank you", "thanks", "thx"]):
+        prompt = "Glad to hear it. Would you like to close this chat?"
+        state.collected["_pending_action"] = {"type": "close_chat", "prompt": prompt}
+        insert_message(session_id=state.session_id, role="assistant", content=prompt)
+        save_session(state)
+        return ActionResponse(message=prompt, actions=[Action(action_id="yes", label="Close chat"), Action(action_id="no", label="Keep open")], meta={"pending": "close_chat"})
+
     missing = next_missing_field(flow, state.collected)
     if missing:
         q = question_for(flow, missing)
@@ -424,6 +490,7 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
         kb_dir=Path(settings.kb_dir),
     )
     if not supported:
+        # Ask before escalating to a ticket
         ticket = Ticket(
             summary=state.collected.get("summary") or req.message.strip()[:120],
             category=state.category or "unknown",
@@ -439,24 +506,22 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
             escalation_reason=unsupported_reason or "Unsupported device/OS/application",
             citations=[],
         )
-        rendered = _render_ticket(ticket)
-        insert_ticket(
-            org_id=u.org_id,
-            user_id=u.user_id,
-            session_id=state.session_id,
-            summary=ticket.summary,
-            category=ticket.category,
-            impact=ticket.impact,
-            urgency=ticket.urgency,
-            escalation_reason=ticket.escalation_reason,
-            rendered_text=rendered,
-            diagnostics=ticket.diagnostics,
-            steps_attempted=ticket.steps_attempted,
-            citations=[],
+        prompt = (
+            f"I can’t safely guide this one using our supported KB scope ({ticket.escalation_reason}). "
+            "Would you like to escalate this chat to a ticket?"
         )
-        insert_message(session_id=state.session_id, role="assistant", content=rendered)
+        state.collected["_pending_action"] = {
+            "type": "escalate_to_ticket",
+            "prompt": prompt,
+            "draft": ticket.model_dump(),
+        }
+        insert_message(session_id=state.session_id, role="assistant", content=prompt)
         save_session(state)
-        return TicketResponse(ticket=ticket, rendered=rendered)
+        return ActionResponse(
+            message=prompt,
+            actions=[Action(action_id="escalate", label="Escalate to ticket"), Action(action_id="no", label="Keep chatting")],
+            meta={"pending": "escalate_to_ticket"},
+        )
 
     # Retrieve docs based on message + collected context
     query = req.message + "\n" + "\n".join([f"{k}: {v}" for k, v in sorted(state.collected.items())])
@@ -480,24 +545,22 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
             escalation_reason=esc_reason or "Escalated",
             citations=citations,
         )
-        rendered = _render_ticket(ticket)
-        insert_ticket(
-            org_id=u.org_id,
-            user_id=u.user_id,
-            session_id=state.session_id,
-            summary=ticket.summary,
-            category=ticket.category,
-            impact=ticket.impact,
-            urgency=ticket.urgency,
-            escalation_reason=ticket.escalation_reason,
-            rendered_text=rendered,
-            diagnostics=ticket.diagnostics,
-            steps_attempted=ticket.steps_attempted,
-            citations=[c.model_dump() for c in ticket.citations],
+        prompt = (
+            "I’m not confident we can resolve this safely with the KB excerpts I have. "
+            "Would you like to escalate this chat to a ticket?"
         )
-        insert_message(session_id=state.session_id, role="assistant", content=rendered)
+        state.collected["_pending_action"] = {
+            "type": "escalate_to_ticket",
+            "prompt": prompt,
+            "draft": ticket.model_dump(),
+        }
+        insert_message(session_id=state.session_id, role="assistant", content=prompt)
         save_session(state)
-        return TicketResponse(ticket=ticket, rendered=rendered)
+        return ActionResponse(
+            message=prompt,
+            actions=[Action(action_id="escalate", label="Escalate to ticket"), Action(action_id="no", label="Keep chatting")],
+            meta={"pending": "escalate_to_ticket"},
+        )
 
     # Compose prompt grounded in citations
     system = (
@@ -540,24 +603,23 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
             escalation_reason=f"Guardrail blocked response: {gr.reason}",
             citations=citations,
         )
-        rendered = _render_ticket(ticket)
-        insert_ticket(
-            org_id=u.org_id,
-            user_id=u.user_id,
-            session_id=state.session_id,
-            summary=ticket.summary,
-            category=ticket.category,
-            impact=ticket.impact,
-            urgency=ticket.urgency,
-            escalation_reason=ticket.escalation_reason,
-            rendered_text=rendered,
-            diagnostics=ticket.diagnostics,
-            steps_attempted=ticket.steps_attempted,
-            citations=[c.model_dump() for c in ticket.citations],
+        prompt = (
+            "I can’t answer that safely under our guardrails. "
+            "Would you like to escalate this chat to a ticket for a technician to review?"
         )
-        insert_message(session_id=state.session_id, role="assistant", content=rendered)
+        state.collected["_pending_action"] = {
+            "type": "escalate_to_ticket",
+            "prompt": prompt,
+            "draft": ticket.model_dump(),
+        }
+        insert_message(session_id=state.session_id, role="assistant", content=prompt)
         save_session(state)
-        return TicketResponse(ticket=ticket, rendered=rendered)
+        return ActionResponse(
+            message=prompt,
+            actions=[Action(action_id="escalate", label="Escalate to ticket"), Action(action_id="no", label="Keep chatting")],
+            meta={"pending": "escalate_to_ticket"},
+        )
+
 
     insert_message(
         session_id=state.session_id,

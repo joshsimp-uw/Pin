@@ -177,6 +177,82 @@
   };
 
   // Keep the other tabs as placeholders (still local-only for now)
+  const renderUsers = async () => {
+    activeView("users");
+
+    const users = await api("/api/admin/users", { method: "GET" });
+
+    panel.innerHTML = `
+      <h2>Users</h2>
+      <p class="small">Create users and assign admin rights. Email is the login ID. A temporary password is generated on create.</p>
+      <div class="hr"></div>
+
+      <h3 style="margin:0 0 10px">Add user</h3>
+      <div class="form-grid">
+        <div class="field">
+          <label>First Name</label>
+          <input id="uFirst" placeholder="First name" />
+        </div>
+        <div class="field">
+          <label>Last Name</label>
+          <input id="uLast" placeholder="Last name" />
+        </div>
+        <div class="field">
+          <label>Email (login)</label>
+          <input id="uEmail" placeholder="name@company.com" />
+        </div>
+        <div class="field">
+          <label>Is Admin</label>
+          <label style="display:flex; gap:10px; align-items:center; margin-top:8px">
+            <input id="uIsAdmin" type="checkbox" />
+            <span class="small">Grant admin access</span>
+          </label>
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap">
+        <button id="createUserBtn" class="btn" type="button">Create user</button>
+        <span id="createUserMsg" class="small"></span>
+      </div>
+
+      <div class="hr"></div>
+
+      <h3 style="margin:0 0 10px">Existing users</h3>
+      <div class="list" id="userList"></div>
+    `;
+
+    const list = document.getElementById("userList");
+    const html = (users || []).length ? users.map(u => `
+      <div class="row" style="cursor:default">
+        <div>
+          <div><strong>${escapeHtml((u.first_name || "") + " " + (u.last_name || ""))}</strong></div>
+          <div class="small"><span class="mono">${escapeHtml(u.user_id)}</span> • role: <span class="mono">${escapeHtml(u.role)}</span></div>
+        </div>
+        <div class="small">${escapeHtml((u.created_at || "").split("T")[0] || "")}</div>
+      </div>
+    `).join("") : `<div class="small">No users found.</div>`;
+    list.innerHTML = html;
+
+    document.getElementById("createUserBtn").addEventListener("click", async () => {
+      const first_name = document.getElementById("uFirst").value.trim();
+      const last_name = document.getElementById("uLast").value.trim();
+      const email = document.getElementById("uEmail").value.trim();
+      const is_admin = document.getElementById("uIsAdmin").checked;
+      const msg = document.getElementById("createUserMsg");
+      msg.textContent = "";
+
+      try {
+        const r = await api("/api/admin/users", {
+          method: "POST",
+          body: JSON.stringify({ first_name, last_name, email, is_admin }),
+        });
+        msg.innerHTML = `Created <span class="mono">${escapeHtml(r.user_id)}</span>. Temporary password: <span class="mono">${escapeHtml(r.temp_password)}</span>`;
+        await renderUsers();
+      } catch (e) {
+        msg.textContent = String(e?.message || e);
+      }
+    });
+  };
+
   const renderStub = (title, text) => {
     $("#adminPanel").innerHTML = `
       <h2>${title}</h2>
@@ -188,6 +264,7 @@
     setActive(view);
     if (view === "llm") return renderLLM();
     if (view === "rag") return renderRAG();
+    if (view === "users") return renderUsers();
     if (view === "flows") return renderStub("Flow Rules", "Flow rules UI is still a stub in this branch.");
     if (view === "audit") return renderStub("Audit Log", "Audit log UI is still a stub in this branch.");
     return renderLLM();

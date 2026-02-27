@@ -30,6 +30,19 @@ class AnswerResponse(BaseModel):
     collected: dict[str, Any] = Field(default_factory=dict)
 
 
+class Action(BaseModel):
+    action_id: str
+    label: str
+
+
+class ActionResponse(BaseModel):
+    type: Literal["action"] = "action"
+    message: str
+    actions: list[Action] = Field(default_factory=list)
+    # If provided, the UI can render additional details.
+    meta: dict[str, Any] = Field(default_factory=dict)
+
+
 class Ticket(BaseModel):
     summary: str
     category: str
@@ -47,8 +60,7 @@ class Ticket(BaseModel):
 class TicketResponse(BaseModel):
     type: Literal["ticket"] = "ticket"
     ticket: Ticket
-    # This is what you can email or save as a text file.
     rendered: str
 
 
-ChatResponse = AnswerResponse | TicketResponse
+ChatResponse = AnswerResponse | ActionResponse | TicketResponse

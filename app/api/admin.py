@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import secrets
+
 from fastapi import APIRouter, Body, Header, HTTPException
 
 from app.api.deps import require_admin_from_auth_header
 from app.core.config import settings
 from app.core.config_store import list_llm_providers, get_setting, set_setting, upsert_llm_provider
-from app.core.repository import ensure_org
+from app.core.repository import ensure_org, ensure_user, list_users
+from app.core.auth import set_user_password
 from app.llm.providers import get_llm, LLMError
 from app.llm.embeddings import get_active_rag_backend, set_active_rag_backend
 from app.rag.ingest import ingest_kb_dir, ensure_kb_fresh
@@ -161,3 +164,49 @@ def admin_llm_put(authorization: str | None = Header(default=None), payload: dic
     if set_active:
         set_setting(u.org_id, "active_llm", {"provider": provider})
     return {"status": "ok"}
+
+
+@router.get("/api/admin/users")
+def admin_users_list(authorization: str | None = Header(default=None)) -> list[dict]:
+    u = require_admin_from_auth_header(authorization)
+    return list_users(u.org_id)
+
+
+@router.post("/api/admin/users")
+def admin_users_create(authorization: str | None = Header(default=None), payload: dict = Body(...)) -> dict:
+    """Create a user (admin-only).
+
+    Requirements (per project spec):
+      - First Name
+      - Last Name
+      - Email (logon id)
+      - Is admin (toggle)
+
+    Password is auto-generated and returned once.
+    """
+    u = require_admin_from_auth_header(authorization)
+
+    first = str(payload.get("first_name") or "").strip()
+    last = str(payload.get("last_name") or "").strip()
+    email = str(payload.get("email") or "").strip().lower()
+    is_admin = bool(payload.get("is_admin", False))
+
+    if not first or not last or not email:
+        raise HTTPException(status_code=400, detail="first_name, last_name, and email are required")
+
+    role = "admin" if is_admin else "end_user"
+
+    ensure_org(u.org_id, name=u.org_id)
+    ensure_user(
+        org_id=u.org_id,
+        user_id=email,
+        first_name=first,
+        last_name=last,
+        email=email,
+        role=role,
+    )
+
+    temp_pw = "Pin-" + secrets.token_urlsafe(9)
+    set_user_password(user_id=email, password=temp_pw)
+
+    return {"status": "ok", "user_id": email, "temp_password": temp_pw}

@@ -125,11 +125,13 @@ CREATE INDEX IF NOT EXISTS idx_devices_org ON devices(org_id);
 CREATE INDEX IF NOT EXISTS idx_devices_user ON devices(assigned_user_id);
 CREATE INDEX IF NOT EXISTS idx_devices_asset ON devices(asset_id);
 
--- Sessions (extends current implementation; links to org/user)
+-- Sessions (chat sessions)
 CREATE TABLE IF NOT EXISTS sessions (
   session_id           TEXT PRIMARY KEY,
   org_id               TEXT NOT NULL,
   user_id              TEXT NOT NULL,
+  title                TEXT,                       -- UI-facing summary/name
+  ticket_id            TEXT,                       -- optional association to a ticket
   turns                INTEGER NOT NULL,
   category             TEXT,
   status               TEXT NOT NULL DEFAULT 'open', -- open|closed
@@ -137,11 +139,14 @@ CREATE TABLE IF NOT EXISTS sessions (
   steps_attempted_json TEXT NOT NULL,
   created_at           TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  closed_at            TEXT,
   FOREIGN KEY (org_id) REFERENCES orgs(org_id) ON DELETE CASCADE,
-  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+  FOREIGN KEY (ticket_id) REFERENCES tickets(ticket_id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_org_status ON sessions(org_id, status);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_ticket ON sessions(ticket_id);
 
 -- Messages (chat transcript)
 CREATE TABLE IF NOT EXISTS messages (

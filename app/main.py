@@ -21,6 +21,7 @@ from app.api.auth import router as auth_router
 from app.api.bootstrap import router as bootstrap_router
 from app.api.chat import router as chat_router
 from app.api.health import router as health_router
+from app.api.portal import router as portal_router
 from app.core.auth import set_user_password
 from app.core.config import settings
 from app.core.db import init_schema
@@ -58,6 +59,7 @@ app.include_router(auth_router)
 app.include_router(bootstrap_router)
 app.include_router(admin_router)
 app.include_router(chat_router)
+app.include_router(portal_router)
 
 
 @app.on_event("startup")

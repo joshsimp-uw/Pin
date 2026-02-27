@@ -5,138 +5,91 @@
     return;
   }
 
-  const stateKey = "pin_state_v1";
-  const now = new Date();
+  const BACKEND_BASE = ""; // same-origin
 
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
-  const escapeHtml = (s) => String(s).replace(/[&<>\"']/g, (c) => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+  const escapeHtml = (s) => String(s ?? "").replace(/[&<>\"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;",
   })[c]);
 
-  const loadState = () => {
-    const raw = localStorage.getItem(stateKey);
-    if (raw) return JSON.parse(raw);
-
-    return {
-      chats: [],         // {id, name, createdAt, messages:[{role, text, ts}], status:'open'|'closed', ticketId?}
-      tickets: [],       // {id, chatId, title, createdAt, payload}
-      selectedChatId: null,
-      view: "newIssue",
-      version: 1
-    };
+  const api = async (path, opts = {}) => {
+    const r = await fetch(`${BACKEND_BASE}${path}`,
+      {
+        ...opts,
+        headers: {
+          ...(opts.headers || {}),
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.token}`,
+        },
+      }
+    );
+    if (!r.ok) {
+      const t = await r.text().catch(() => "");
+      throw new Error(t || `${path} failed (${r.status})`);
+    }
+    const ct = r.headers.get("content-type") || "";
+    if (ct.includes("application/json")) return r.json();
+    return r.text();
   };
 
-  const saveState = () => localStorage.setItem(stateKey, JSON.stringify(state));
-
-  const state = loadState();
-
-  // --- Backend chat client ----------------------------------------------
-
-const BACKEND_BASE = "http://localhost:8000";  // adjust if needed
-
-/**
- * Creates a new server session and returns { session_id }.
- * Call this exactly once when you create a new chat in the UI.
- */
-async function createServerSession() {
-  const res = await fetch(`${BACKEND_BASE}/session/new`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${session.token}`,
-    },
-  });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(`/session/new failed ${res.status}: ${txt}`);
-  }
-  return res.json(); // { session_id: string }
-}
-
-/**
- * Sends a user message to the FastAPI /chat route and returns a string
- * that's safe to display in the chat (answer message or ticket text).
- */
-async function sendChatMessage({ message, session_id, context = {} }) {
-  const res = await fetch(`${BACKEND_BASE}/chat`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${session.token}`,
-    },
-    body: JSON.stringify({ message, session_id, context })
-  });
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`/chat failed ${res.status}: ${errText}`);
-  }
-
-  const data = await res.json();
-
-  // Normalize the text for display
-  let text = "Sorry — unexpected response from the assistant.";
-  if (data.type === "ticket")       text = data.rendered ?? text;
-  else if (data.type === "answer")  text = data.message ?? text;
-  else if (data.message)            text = data.message;
-
-  const type = (data.type === "ticket" || data.type === "answer") ? data.type : "answer";
-  return { text, type, raw: data };
-}
-
-
-  // Header + footer meta
+  // Header
+  const now = new Date();
   $("#year").textContent = String(now.getFullYear());
   $("#buildDate").textContent = now.toISOString();
   $("#companyMeta").textContent = session.company;
   $("#userMeta").textContent = session.email;
-  $("#userBadge").textContent = session.email; // got rid of dept
+  $("#userBadge").textContent = session.email;
 
   const logout = () => {
     localStorage.removeItem("pin_session");
     window.location.href = "./login.html";
   };
   $("#logoutBtn").addEventListener("click", logout);
-  
-// ---- Admin button wiring (prototype) ----
-const adminBtn = document.getElementById("adminBtn");
-if (adminBtn) {
-  if (session.role === "admin") {
-    adminBtn.style.display = "inline-flex";
-    adminBtn.addEventListener("click", () => {
-      window.location.href = "./admin.html";
-    });
-  } else {
-    adminBtn.style.display = "none";
+
+  // Admin button
+  const adminBtn = document.getElementById("adminBtn");
+  if (adminBtn) {
+    if (session.role === "admin") {
+      adminBtn.style.display = "inline-flex";
+      adminBtn.addEventListener("click", () => (window.location.href = "./admin.html"));
+    } else {
+      adminBtn.style.display = "none";
+    }
   }
-}
 
+  // Local UI state (per user)
+  const stateKey = `pin_ui_state_v2:${session.email}`;
+  const uiState = (() => {
+    try {
+      return JSON.parse(localStorage.getItem(stateKey) || "{}") || {};
+    } catch {
+      return {};
+    }
+  })();
+  const saveUi = () => localStorage.setItem(stateKey, JSON.stringify(uiState));
 
-  // Counts
-  const counts = () => {
-    const openChats = state.chats.filter(c => c.status === "open").length;
-    const tickets = state.tickets.length;
-    const closed = state.chats.filter(c => c.status === "closed").length;
-    $("#countOpenChats").textContent = String(openChats);
-    $("#countOpenChats2").textContent = String(openChats);
-    $("#countTickets").textContent = String(tickets);
-    $("#countClosed").textContent = String(closed);
+  let currentSessionId = uiState.currentSessionId || null;
+
+  const setActiveNav = (view) => {
+    $$("aside .nav button[data-view]").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
   };
 
-  // Render KPI context panel
-  const renderKpis = () => {
-    const open = state.chats.filter(c => c.status === "open").length;
-    const closed = state.chats.filter(c => c.status === "closed").length;
-    const selected = state.selectedChatId ? state.chats.find(c => c.id === state.selectedChatId) : null;
+  const renderKpis = async () => {
+    const data = await api("/api/home", { method: "GET" });
+    const c = data.counts || {};
 
     const kpis = [
       { label: "Company", value: session.company },
       { label: "User", value: session.email },
-      // { label: "Department", value: session.dept },
-      { label: "Open chats", value: String(open) },
-      { label: "Closed chats", value: String(closed) },
-      { label: "Selected", value: selected ? selected.name : "—" },
+      { label: "Open chats", value: String(c.open_chats ?? 0) },
+      { label: "Closed chats", value: String(c.closed_chats ?? 0) },
+      { label: "Open tickets", value: String(c.open_tickets ?? 0) },
+      { label: "Closed tickets", value: String(c.closed_tickets ?? 0) },
     ];
 
     $("#kpiPanel").innerHTML = kpis.map(k => `
@@ -145,449 +98,417 @@ if (adminBtn) {
         <div class="value">${escapeHtml(k.value)}</div>
       </div>
     `).join("");
+
+    // Sidebar counts
+    const openChats = c.open_chats ?? 0;
+    const openTickets = c.open_tickets ?? 0;
+    const closedChats = c.closed_chats ?? 0;
+    const closedTickets = c.closed_tickets ?? 0;
+
+    const oc2 = document.getElementById("countOpenChats2");
+    const tk = document.getElementById("countTickets");
+    const cl = document.getElementById("countClosed");
+    const ct = document.getElementById("countClosedTickets");
+
+    if (oc2) oc2.textContent = String(openChats);
+    if (tk) tk.textContent = String(openTickets);
+    if (cl) cl.textContent = String(closedChats);
+    if (ct) ct.textContent = String(closedTickets);
   };
 
-  const setActiveNav = (view) => {
-    $$(".nav button").forEach(b => b.classList.toggle("active", b.dataset.view === view));
+  async function sendChatMessage({ message, session_id, context = {} }) {
+    const res = await fetch(`${BACKEND_BASE}/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.token}`,
+      },
+      body: JSON.stringify({ message, session_id, context })
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      throw new Error(`/chat failed ${res.status}: ${errText}`);
+    }
+
+    return res.json();
+  }
+
+  const fmtDate = (iso) => {
+    try { return new Date(iso).toLocaleString(); } catch { return String(iso || ""); }
   };
 
-  const uid = () => Math.random().toString(36).slice(2, 10);
+  const renderHome = async () => {
+    setActiveNav("home");
+    uiState.view = "home";
+    saveUi();
 
-  // Views
-  const view_newIssue = () => {
-    setActiveNav("newIssue");
-    state.view = "newIssue";
-    saveState();
+    const data = await api("/api/home", { method: "GET" });
+    const c = data.counts || {};
+    const recentChats = (data.recent?.open_chats || []).slice(0, 5);
+    const recentTickets = (data.recent?.open_tickets || []).slice(0, 5);
 
     $("#primaryPanel").innerHTML = `
-      <h2>New Issue</h2>
-      <p class="small">Start a new chat session. The first meaningful message becomes the issue summary (chat name).</p>
+      <h2>Welcome</h2>
+      <p class="small">Here’s a quick snapshot of your help desk activity.</p>
+      <div class="hr"></div>
+
+      <div class="kpi" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+        <div class="item"><div class="label">Open chats</div><div class="value">${escapeHtml(c.open_chats ?? 0)}</div></div>
+        <div class="item"><div class="label">Closed chats</div><div class="value">${escapeHtml(c.closed_chats ?? 0)}</div></div>
+        <div class="item"><div class="label">Open tickets</div><div class="value">${escapeHtml(c.open_tickets ?? 0)}</div></div>
+        <div class="item"><div class="label">Closed tickets</div><div class="value">${escapeHtml(c.closed_tickets ?? 0)}</div></div>
+      </div>
+
+      <div class="hr"></div>
+
+      <h3 style="margin:0 0 8px">Recent open chats</h3>
+      <div class="list" id="recentChats"></div>
+
+      <div class="hr"></div>
+
+      <h3 style="margin:0 0 8px">Recent open tickets</h3>
+      <div class="list" id="recentTickets"></div>
+    `;
+
+    const chatHtml = recentChats.length ? recentChats.map(s => `
+      <button class="row" data-open-chat="${escapeHtml(s.session_id)}">
+        <div>
+          <div><strong>${escapeHtml(s.title || "Chat")}</strong></div>
+          <div class="small">Updated ${escapeHtml(fmtDate(s.updated_at))}${s.ticket_id ? ` • Ticket linked` : ""}</div>
+        </div>
+        <div class="small">→</div>
+      </button>
+    `).join("") : `<div class="small">No open chats.</div>`;
+
+    const ticketHtml = recentTickets.length ? recentTickets.map(t => `
+      <button class="row" data-open-ticket="${escapeHtml(t.ticket_id)}">
+        <div>
+          <div><strong>${escapeHtml(t.summary || "Ticket")}</strong></div>
+          <div class="small">Created ${escapeHtml(fmtDate(t.created_at))}</div>
+        </div>
+        <div class="small">→</div>
+      </button>
+    `).join("") : `<div class="small">No open tickets.</div>`;
+
+    $("#recentChats").innerHTML = chatHtml;
+    $("#recentTickets").innerHTML = ticketHtml;
+
+    $$("[data-open-chat]").forEach(btn => btn.addEventListener("click", () => openChat(btn.dataset.openChat)));
+    $$("[data-open-ticket]").forEach(btn => btn.addEventListener("click", () => openTicket(btn.dataset.openTicket)));
+
+    await renderKpis();
+  };
+
+  const renderChatList = async (status) => {
+    setActiveNav(status === "closed" ? "closedChats" : "openChats");
+    uiState.view = status === "closed" ? "closedChats" : "openChats";
+    saveUi();
+
+    const rows = await api(`/api/chats?status=${encodeURIComponent(status)}`, { method: "GET" });
+
+    $("#primaryPanel").innerHTML = `
+      <h2>${status === "closed" ? "Closed Chats" : "Open Chats"}</h2>
+      <p class="small">Chats are private to your account.</p>
+      <div class="hr"></div>
+      <div class="list" id="chatList"></div>
+    `;
+
+    const html = (rows || []).length ? rows.map(s => `
+      <button class="row" data-open-chat="${escapeHtml(s.session_id)}">
+        <div>
+          <div><strong>${escapeHtml(s.title || "Chat")}</strong></div>
+          <div class="small">Updated ${escapeHtml(fmtDate(s.updated_at))}${s.ticket_id ? ` • Ticket linked` : ""}</div>
+        </div>
+        <div class="small">→</div>
+      </button>
+    `).join("") : `<div class="small">No chats.</div>`;
+
+    $("#chatList").innerHTML = html;
+    $$("[data-open-chat]").forEach(btn => btn.addEventListener("click", () => openChat(btn.dataset.openChat)));
+    await renderKpis();
+  };
+
+  const renderTicketList = async (status) => {
+    setActiveNav(status === "closed" ? "closedTickets" : "openTickets");
+    uiState.view = status === "closed" ? "closedTickets" : "openTickets";
+    saveUi();
+
+    const rows = await api(`/api/tickets?status=${encodeURIComponent(status)}`, { method: "GET" });
+
+    $("#primaryPanel").innerHTML = `
+      <h2>${status === "closed" ? "Closed Tickets" : "Open Tickets"}</h2>
+      <p class="small">Tickets are separate from chats, but linked chats are preserved for reference.</p>
+      <div class="hr"></div>
+      <div class="list" id="ticketList"></div>
+    `;
+
+    const html = (rows || []).length ? rows.map(t => `
+      <button class="row" data-open-ticket="${escapeHtml(t.ticket_id)}">
+        <div>
+          <div><strong>${escapeHtml(t.summary || "Ticket")}</strong></div>
+          <div class="small">${escapeHtml(t.status)} • ${escapeHtml(fmtDate(t.created_at))}</div>
+        </div>
+        <div class="small">→</div>
+      </button>
+    `).join("") : `<div class="small">No tickets.</div>`;
+
+    $("#ticketList").innerHTML = html;
+    $$("[data-open-ticket]").forEach(btn => btn.addEventListener("click", () => openTicket(btn.dataset.openTicket)));
+    await renderKpis();
+  };
+
+  const openTicket = async (ticketId) => {
+    uiState.currentTicketId = ticketId;
+    saveUi();
+
+    const t = await api(`/api/tickets/${encodeURIComponent(ticketId)}`, { method: "GET" });
+    const chats = t.chats || [];
+
+    $("#primaryPanel").innerHTML = `
+      <h2>Ticket</h2>
+      <p class="small"><strong>${escapeHtml(t.summary || "")}</strong> • ${escapeHtml(t.status || "")}</p>
+      <div class="hr"></div>
+      <pre class="mono" style="white-space:pre-wrap; border:1px solid var(--border); padding:12px; border-radius:12px; background:rgba(0,0,0,0.02)">${escapeHtml(t.rendered_text || "")}</pre>
+
+      <div class="hr"></div>
+      <h3 style="margin:0 0 8px">Linked chats</h3>
+      <div class="list" id="linkedChats"></div>
+    `;
+
+    $("#linkedChats").innerHTML = chats.length ? chats.map(s => `
+      <button class="row" data-open-chat="${escapeHtml(s.session_id)}">
+        <div>
+          <div><strong>${escapeHtml(s.title || "Chat")}</strong></div>
+          <div class="small">${escapeHtml(s.status)} • Updated ${escapeHtml(fmtDate(s.updated_at))}</div>
+        </div>
+        <div class="small">→</div>
+      </button>
+    `).join("") : `<div class="small">No linked chats yet.</div>`;
+
+    $$("[data-open-chat]").forEach(btn => btn.addEventListener("click", () => openChat(btn.dataset.openChat)));
+    await renderKpis();
+  };
+
+  const openChat = async (sessionId) => {
+    currentSessionId = sessionId;
+    uiState.currentSessionId = sessionId;
+    saveUi();
+
+    const chat = await api(`/api/chats/${encodeURIComponent(sessionId)}`, { method: "GET" });
+    const msgs = await api(`/api/chats/${encodeURIComponent(sessionId)}/messages`, { method: "GET" });
+
+    setActiveNav("chat");
+
+    $("#primaryPanel").innerHTML = `
+      <h2>${escapeHtml(chat.title || "Chat")}</h2>
+      <p class="small">Status: <span class="mono">${escapeHtml(chat.status)}</span>${chat.ticket_id ? ` • Ticket: <span class="mono">${escapeHtml(chat.ticket_id)}</span>` : ""}</p>
       <div class="hr"></div>
 
       <div class="chat">
-        <div class="chat-log" id="chatLog">
-          <div class="msg bot">
-            <div><strong>Pin</strong>: Hi! Describe what's going on, and I’ll ask the questions needed to resolve it — or build a ticket if we can’t.</div>
-            <div class="meta">${escapeHtml(new Date().toLocaleString())}</div>
-          </div>
-        </div>
+        <div class="chat-log" id="chatLog"></div>
 
         <div class="chat-input">
-          <textarea id="chatText" placeholder="Describe your issue..."></textarea>
-          <button id="sendBtn" class="btn">Send</button>
+          <textarea id="chatText" placeholder="Type your message..." ${chat.status !== "open" ? "disabled" : ""}></textarea>
+          <button id="sendBtn" class="btn" ${chat.status !== "open" ? "disabled" : ""}>Send</button>
         </div>
 
         <div style="display:flex; gap:10px; flex-wrap:wrap">
-          <button id="createTicketBtn" class="btn secondary" type="button">Generate Ticket (demo)</button>
-          <button id="closeChatBtn" class="btn secondary" type="button">Close Chat</button>
-          <span class="small">Tip: Use “Generate Ticket” after you’ve provided enough detail.</span>
+          <button id="escalateBtn" class="btn secondary" type="button" ${chat.ticket_id ? "disabled" : ""}>Escalate to Ticket</button>
+          <button id="closeChatBtn" class="btn secondary" type="button" ${chat.status !== "open" ? "disabled" : ""}>Close Chat</button>
+          ${chat.ticket_id ? `<button id="openTicketBtn" class="btn secondary" type="button">Open Ticket</button>` : ""}
         </div>
       </div>
     `;
 
-    // Create a new chat instance immediately per your spec
-    const newChat = {
-      id: uid(),
-      name: "New Issue",
-      createdAt: new Date().toISOString(),
-      status: "open",
-      messages: [
-        { role: "bot", text: "Hi! Describe what's going on, and I’ll ask the questions needed to resolve it — or build a ticket if we can’t.", ts: new Date().toISOString() }
-      ]
-    };
-    state.chats.unshift(newChat);
-    state.selectedChatId = newChat.id;
-    saveState();
-    counts();
-    renderKpis();
+    const log = $("#chatLog");
 
-    const renderChat = () => {
-      const chat = state.chats.find(c => c.id === state.selectedChatId);
-      if (!chat) return;
-
-      const log = $("#chatLog");
-      log.innerHTML = chat.messages.map(m => `
-        <div class="msg ${m.role === "user" ? "user" : "bot"}">
-          <div>${m.role === "user" ? "<strong>You</strong>" : "<strong>Pin</strong>"}: ${escapeHtml(m.text)}</div>
-          <div class="meta">${escapeHtml(new Date(m.ts).toLocaleString())}</div>
-        </div>
-      `).join("");
+    const appendMsg = (role, text, ts) => {
+      const isUser = role === "user" || role === "human";
+      const cls = isUser ? "user" : "bot";
+      const name = isUser ? "You" : "Pin";
+      const el = document.createElement("div");
+      el.className = `msg ${cls}`;
+      el.innerHTML = `
+        <div><strong>${escapeHtml(name)}</strong>: ${escapeHtml(text)}</div>
+        <div class="meta">${escapeHtml(fmtDate(ts || new Date().toISOString()))}</div>
+      `;
+      log.appendChild(el);
       log.scrollTop = log.scrollHeight;
     };
 
-    const setChatNameFromFirstUserMessage = (text) => {
-      const chat = state.chats.find(c => c.id === state.selectedChatId);
-      if (!chat) return;
+    log.innerHTML = "";
+    (msgs || []).forEach(m => appendMsg(m.role, m.content, m.created_at));
 
-      if (chat.name === "New Issue") {
-        // crude summary heuristic: first sentence up to 60 chars
-        const summary = text.split(/[.\n]/)[0].trim().slice(0, 60) || "Issue";
-        chat.name = summary;
+    const showActionButtons = (type) => {
+      const holder = document.createElement("div");
+      holder.style.display = "flex";
+      holder.style.gap = "10px";
+      holder.style.flexWrap = "wrap";
+      holder.style.marginTop = "10px";
+
+      if (type === "escalate_to_ticket") {
+        const b1 = document.createElement("button");
+        b1.className = "btn";
+        b1.textContent = "Escalate to Ticket";
+        b1.addEventListener("click", async () => {
+          try {
+            const r = await api(`/api/chats/${encodeURIComponent(sessionId)}/escalate`, { method: "POST", body: JSON.stringify({}) });
+            appendMsg("assistant", r.rendered || "Ticket created.", new Date().toISOString());
+            await renderKpis();
+            await openChat(sessionId);
+          } catch (e) {
+            alert(String(e?.message || e));
+          }
+        });
+
+        const b2 = document.createElement("button");
+        b2.className = "btn secondary";
+        b2.textContent = "No";
+        b2.addEventListener("click", () => sendAndRender("no"));
+
+        holder.appendChild(b1);
+        holder.appendChild(b2);
       }
+
+      if (type === "close_chat") {
+        const b1 = document.createElement("button");
+        b1.className = "btn";
+        b1.textContent = "Close chat";
+        b1.addEventListener("click", async () => {
+          try {
+            await api(`/api/chats/${encodeURIComponent(sessionId)}/close`, { method: "POST" });
+            await openChat(sessionId);
+            await renderKpis();
+          } catch (e) {
+            alert(String(e?.message || e));
+          }
+        });
+
+        const b2 = document.createElement("button");
+        b2.className = "btn secondary";
+        b2.textContent = "Keep open";
+        b2.addEventListener("click", () => sendAndRender("no"));
+
+        holder.appendChild(b1);
+        holder.appendChild(b2);
+      }
+
+      log.appendChild(holder);
+      log.scrollTop = log.scrollHeight;
     };
 
-  // Function to link chat UI with FastAPI backend
-    const send = async () => {
-      const textArea = $("#chatText");
-      const text = textArea.value.trim();
-      if (!text) return;
-
-      const chat = state.chats.find(c => c.id === state.selectedChatId);
-      if (!chat) return;
-
-      // Add user message to state
-      chat.messages.push({ role: "user", text, ts: new Date().toISOString() });
-      setChatNameFromFirstUserMessage(text);
-      saveState();
-      counts();
-      renderKpis();
-      renderChat();
-
-      // Clear input
-      textArea.value = "";
+    const sendAndRender = async (text) => {
+      const msg = String(text || "").trim();
+      if (!msg) return;
+      appendMsg("user", msg, new Date().toISOString());
 
       try {
-        // If we don't yet have a server session, either create one or pass null (server will create)
-        if (!chat.serverSessionId) {
-          try {
-            const { session_id } = await createServerSession();
-            chat.serverSessionId = session_id;
-            saveState();
-          } catch (e) {
-            console.warn("Proceeding without pre-created session:", e);
-          }
+        const data = await sendChatMessage({ message: msg, session_id: sessionId, context: {} });
+
+        if (data.type === "answer") {
+          appendMsg("assistant", data.message || "", new Date().toISOString());
+        } else if (data.type === "ticket") {
+          appendMsg("assistant", data.rendered || "Ticket created.", new Date().toISOString());
+        } else if (data.type === "action") {
+          appendMsg("assistant", data.message || "", new Date().toISOString());
+          showActionButtons(data.meta?.pending || "");
+        } else {
+          appendMsg("assistant", JSON.stringify(data), new Date().toISOString());
         }
 
-        // Compose optional context (these map nicely into Ticket.user/device later)
-        const context = {
-          user_email: session.email,
-          company: session.company
-          // Add device_* keys here if you have them (e.g., device_os, device_serial, etc.)
-        };
-
-        const { text: botText } = await sendChatMessage({
-          message: text,
-          session_id: chat.serverSessionId ?? null,
-          context
-        });
-
-        chat.messages.push({ role: "bot", text: botText, ts: new Date().toISOString() });
-
-      } catch (err) {
-        console.error(err);
-        chat.messages.push({
-          role: "bot",
-          text: "Sorry — I ran into an issue contacting the assistant.",
-          ts: new Date().toISOString()
-        });
+        await renderKpis();
+      } catch (e) {
+        appendMsg("assistant", String(e?.message || e), new Date().toISOString());
       }
-
-      saveState();
-      renderChat();
     };
 
-    $("#sendBtn").addEventListener("click", send);
-    $("#chatText").addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
-    });
-
-    $("#createTicketBtn").addEventListener("click", () => {
-      const chat = state.chats.find(c => c.id === state.selectedChatId);
-      if (!chat) return;
-
-      const title = chat.name === "New Issue" ? "Issue" : chat.name;
-      const payload = {
-        company: session.company,
-        requester: { email: session.email }, // got rid of dept
-        title,
-        createdAt: new Date().toISOString(),
-        transcript: chat.messages,
-        // Integration note: this maps cleanly to tier1-bot schemas later
-        integration: { status: "stub", target: "ticketing-system" }
-      };
-
-      const ticket = { id: `TCK-${Math.floor(Math.random()*90000+10000)}`, chatId: chat.id, title, createdAt: new Date().toISOString(), payload };
-      state.tickets.unshift(ticket);
-      chat.ticketId = ticket.id;
-      saveState();
-      counts();
-      renderKpis();
-
-      // Switch to created tickets view to show the result
-      route("createdTickets");
-    });
-
-    $("#closeChatBtn").addEventListener("click", () => {
-      const chat = state.chats.find(c => c.id === state.selectedChatId);
-      if (!chat) return;
-      chat.status = "closed";
-      saveState();
-      counts();
-      renderKpis();
-      route("closedTickets");
-    });
-
-    renderChat();
-  };
-
-  const view_openChats = () => {
-    setActiveNav("openChats");
-    state.view = "openChats";
-    saveState();
-
-    const openChats = state.chats.filter(c => c.status === "open");
-    $("#primaryPanel").innerHTML = `
-      <h2>Open Chats</h2>
-      <p class="small">Re-open a chat in the main window. (Prototype list)</p>
-      <div class="hr"></div>
-      ${openChats.length ? `
-        <div>
-          ${openChats.map(c => `
-            <div class="card" style="padding:12px;margin:10px 0;border-radius:12px">
-              <div style="display:flex;justify-content:space-between;gap:12px;align-items:center">
-                <div>
-                  <div style="font-weight:800">${escapeHtml(c.name)}</div>
-                  <div class="small">Created: ${escapeHtml(new Date(c.createdAt).toLocaleString())}</div>
-                </div>
-                <div style="display:flex;gap:10px">
-                  <button class="btn secondary" data-open="${c.id}">Open</button>
-                  <button class="btn danger" data-close="${c.id}">Close</button>
-                </div>
-              </div>
-            </div>
-          `).join("")}
-        </div>
-      ` : `<div class="small">No open chats. Start with <strong>New Issue</strong>.</div>`}
-    `;
-
-    $$("[data-open]").forEach(btn => btn.addEventListener("click", () => {
-      state.selectedChatId = btn.dataset.open;
-      saveState();
-      // show selected chat in New Issue view (chat UI is there)
-      route("newIssue", { reuseSelected: true });
-    }));
-
-    $$("[data-close]").forEach(btn => btn.addEventListener("click", () => {
-      const chat = state.chats.find(c => c.id === btn.dataset.close);
-      if (chat) chat.status = "closed";
-      saveState();
-      counts();
-      renderKpis();
-      route("openChats");
-    }));
-  };
-
-  const view_createdTickets = () => {
-    setActiveNav("createdTickets");
-    state.view = "createdTickets";
-    saveState();
-
-    const tickets = state.tickets;
-    $("#primaryPanel").innerHTML = `
-      <h2>Created Tickets</h2>
-      <p class="small">Not connected to a ticketing system yet — showing the payload Pin would send.</p>
-      <div class="hr"></div>
-
-      ${tickets.length ? tickets.map(t => `
-        <div class="card" style="padding:12px;margin:10px 0;border-radius:12px">
-          <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
-            <div>
-              <div style="font-weight:900">${escapeHtml(t.id)} — ${escapeHtml(t.title)}</div>
-              <div class="small">Created: ${escapeHtml(new Date(t.createdAt).toLocaleString())}</div>
-            </div>
-            <button class="btn secondary" data-viewticket="${t.id}">View</button>
-          </div>
-          <div class="small" style="margin-top:10px">Chat: <span class="mono">${escapeHtml(t.chatId)}</span></div>
-        </div>
-      `).join("") : `<div class="small">No tickets yet. Generate one from <strong>New Issue</strong>.</div>`}
-
-      <div class="hr"></div>
-      <div class="small">Integration note: later this maps to the backend flow engine output (ticket schema) and posts to your help desk connector.</div>
-    `;
-
-    $$("[data-viewticket]").forEach(btn => btn.addEventListener("click", () => {
-      const ticket = state.tickets.find(t => t.id === btn.dataset.viewticket);
-      if (!ticket) return;
-      $("#primaryPanel").innerHTML = `
-        <h2>Ticket ${escapeHtml(ticket.id)}</h2>
-        <p class="small"><strong>${escapeHtml(ticket.title)}</strong></p>
-        <div class="hr"></div>
-        <pre class="card" style="padding:12px;border-radius:12px;overflow:auto;max-height:520px">${escapeHtml(JSON.stringify(ticket.payload, null, 2))}</pre>
-        <div style="margin-top:12px;display:flex;gap:10px">
-          <button class="btn secondary" id="backTickets">Back</button>
-          <button class="btn" id="openChatFromTicket">Open Chat</button>
-        </div>
-      `;
-      $("#backTickets").addEventListener("click", () => route("createdTickets"));
-      $("#openChatFromTicket").addEventListener("click", () => {
-        state.selectedChatId = ticket.chatId;
-        saveState();
-        route("newIssue", { reuseSelected: true });
+    const sendBtn = $("#sendBtn");
+    const chatText = $("#chatText");
+    if (sendBtn && chatText) {
+      sendBtn.addEventListener("click", () => {
+        const t = chatText.value;
+        chatText.value = "";
+        sendAndRender(t);
       });
-    }));
-  };
-
-  const view_closedTickets = () => {
-    setActiveNav("closedTickets");
-    state.view = "closedTickets";
-    saveState();
-
-    const closedChats = state.chats.filter(c => c.status === "closed");
-    $("#primaryPanel").innerHTML = `
-      <h2>Closed Tickets</h2>
-      <p class="small">Placeholder view. Shows closed chats for later reference.</p>
-      <div class="hr"></div>
-
-      ${closedChats.length ? closedChats.map(c => `
-        <div class="card" style="padding:12px;margin:10px 0;border-radius:12px">
-          <div style="display:flex;justify-content:space-between;gap:12px;align-items:center">
-            <div>
-              <div style="font-weight:800">${escapeHtml(c.name)}</div>
-              <div class="small">Closed • Created: ${escapeHtml(new Date(c.createdAt).toLocaleString())}</div>
-            </div>
-            <button class="btn secondary" data-reopen="${c.id}">Re-open</button>
-          </div>
-        </div>
-      `).join("") : `<div class="small">Nothing closed yet.</div>`}
-    `;
-
-    $$("[data-reopen]").forEach(btn => btn.addEventListener("click", () => {
-      const chat = state.chats.find(c => c.id === btn.dataset.reopen);
-      if (chat) chat.status = "open";
-      state.selectedChatId = btn.dataset.reopen;
-      saveState();
-      counts();
-      renderKpis();
-      route("newIssue", { reuseSelected: true });
-    }));
-  };
-
-  // Router
-  const route = (view, opts = {}) => {
-    counts();
-    renderKpis();
-
-    if (view === "logout") return logout();
-    if (view === "newIssue" && opts.reuseSelected) {
-      // re-render newIssue but keep selected chat
-      setActiveNav("newIssue");
-      state.view = "newIssue";
-      saveState();
-      // render base UI then bind selected chat
-      $("#primaryPanel").innerHTML = `
-        <h2>Chat</h2>
-        <p class="small">Resumed chat. (Prototype)</p>
-        <div class="hr"></div>
-        <div class="chat">
-          <div class="chat-log" id="chatLog"></div>
-          <div class="chat-input">
-            <textarea id="chatText" placeholder="Continue the conversation..."></textarea>
-            <button id="sendBtn" class="btn">Send</button>
-          </div>
-          <div style="display:flex; gap:10px; flex-wrap:wrap">
-            <button id="createTicketBtn" class="btn secondary" type="button">Generate Ticket (demo)</button>
-            <button id="closeChatBtn" class="btn secondary" type="button">Close Chat</button>
-          </div>
-        </div>
-      `;
-
-      const renderChat = () => {
-        const chat = state.chats.find(c => c.id === state.selectedChatId);
-        if (!chat) return;
-        $("#primaryPanel h2").textContent = chat.name;
-        const log = $("#chatLog");
-        log.innerHTML = chat.messages.map(m => `
-          <div class="msg ${m.role === "user" ? "user" : "bot"}">
-            <div>${m.role === "user" ? "<strong>You</strong>" : "<strong>Pin</strong>"}: ${escapeHtml(m.text)}</div>
-            <div class="meta">${escapeHtml(new Date(m.ts).toLocaleString())}</div>
-          </div>
-        `).join("");
-        log.scrollTop = log.scrollHeight;
-      };
-
-      const addBotFollowUp = () => {
-        const chat = state.chats.find(c => c.id === state.selectedChatId);
-        if (!chat) return;
-        chat.messages.push({ role: "bot", text: "Thanks — what changed right before this started happening?", ts: new Date().toISOString() });
-        saveState();
-        renderChat();
-      };
-
-      const send = () => {
-        const textArea = $("#chatText");
-        const text = textArea.value.trim();
-        if (!text) return;
-        const chat = state.chats.find(c => c.id === state.selectedChatId);
-        if (!chat) return;
-        chat.messages.push({ role: "user", text, ts: new Date().toISOString() });
-        saveState();
-        counts();
-        renderKpis();
-        renderChat();
-        textArea.value = "";
-        addBotFollowUp();
-      };
-
-      $("#sendBtn").addEventListener("click", send);
-      $("#chatText").addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
-      });
-
-      $("#createTicketBtn").addEventListener("click", () => {
-        const chat = state.chats.find(c => c.id === state.selectedChatId);
-        if (!chat) return;
-
-        const title = chat.name || "Issue";
-        const payload = {
-          company: session.company,
-          requester: { email: session.email }, // got rid of dept
-          title,
-          createdAt: new Date().toISOString(),
-          transcript: chat.messages,
-          integration: { status: "stub", target: "ticketing-system" }
-        };
-
-        const ticket = { id: `TCK-${Math.floor(Math.random()*90000+10000)}`, chatId: chat.id, title, createdAt: new Date().toISOString(), payload };
-        state.tickets.unshift(ticket);
-        chat.ticketId = ticket.id;
-        saveState();
-        counts();
-        renderKpis();
-        route("createdTickets");
-      });
-
-      $("#closeChatBtn").addEventListener("click", () => {
-        const chat = state.chats.find(c => c.id === state.selectedChatId);
-        if (!chat) return;
-        chat.status = "closed";
-        saveState();
-        counts();
-        renderKpis();
-        route("closedTickets");
-      });
-
-      renderChat();
-      return;
     }
 
-    // Standard view switch
-    const views = {
-      newIssue: view_newIssue,
-      openChats: view_openChats,
-      createdTickets: view_createdTickets,
-      closedTickets: view_closedTickets,
-    };
+    const closeBtn = $("#closeChatBtn");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", async () => {
+        if (!confirm("Close this chat?")) return;
+        try {
+          await api(`/api/chats/${encodeURIComponent(sessionId)}/close`, { method: "POST" });
+          await openChat(sessionId);
+          await renderKpis();
+        } catch (e) {
+          alert(String(e?.message || e));
+        }
+      });
+    }
 
-    (views[view] || view_newIssue)();
+    const escBtn = $("#escalateBtn");
+    if (escBtn) {
+      escBtn.addEventListener("click", async () => {
+        if (!confirm("Create a ticket from this chat?")) return;
+        try {
+          const r = await api(`/api/chats/${encodeURIComponent(sessionId)}/escalate`, { method: "POST", body: JSON.stringify({}) });
+          appendMsg("assistant", r.rendered || "Ticket created.", new Date().toISOString());
+          await openChat(sessionId);
+          await renderKpis();
+        } catch (e) {
+          alert(String(e?.message || e));
+        }
+      });
+    }
+
+    const otBtn = $("#openTicketBtn");
+    if (otBtn) {
+      otBtn.addEventListener("click", () => openTicket(chat.ticket_id));
+    }
+
+    await renderKpis();
   };
 
-  // Nav click handlers
-  $$("aside .nav button[data-view]").forEach(btn => {
+  const createNewChat = async () => {
+    setActiveNav("newIssue");
+    uiState.view = "newIssue";
+    saveUi();
+
+    // Use existing /session/new endpoint
+    const r = await fetch(`${BACKEND_BASE}/session/new`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+    });
+    if (!r.ok) {
+      const t = await r.text().catch(() => "");
+      throw new Error(t || `Failed to create chat (${r.status})`);
+    }
+    const data = await r.json();
+    await openChat(data.session_id);
+  };
+
+  // Wire sidebar
+  const route = async (view) => {
+    try {
+      if (view === "logout") return logout();
+      if (view === "home") return renderHome();
+      if (view === "newIssue") return createNewChat();
+      if (view === "openChats") return renderChatList("open");
+      if (view === "closedChats") return renderChatList("closed");
+      if (view === "openTickets") return renderTicketList("created");
+      if (view === "closedTickets") return renderTicketList("closed");
+      if (view === "chat" && currentSessionId) return openChat(currentSessionId);
+      return renderHome();
+    } catch (e) {
+      $("#primaryPanel").innerHTML = `<h2>Error</h2><pre class="mono" style="white-space:pre-wrap">${escapeHtml(String(e?.message || e))}</pre>`;
+    }
+  };
+
+  $$("aside .nav button[data-view]").forEach((btn) => {
     btn.addEventListener("click", () => route(btn.dataset.view));
   });
 
-  // Initial route
-  counts();
-  renderKpis();
-  route(state.view || "newIssue");
+  // Startup: show home (not new chat)
+  route(uiState.view || "home");
 })();

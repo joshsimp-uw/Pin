@@ -9,9 +9,9 @@ from pathlib import Path
 
 import yaml
 
+from app.core.db import connect
 from app.llm.embeddings import embed_texts, get_active_rag_backend
 from app.rag.vec_store import connect_vec, ensure_vec_schema
-from app.core.db import connect
 
 
 @dataclass
@@ -153,16 +153,18 @@ def _set_kb_state(key: str, value: str) -> None:
         conn.close()
 
 
-async def rebuild_vectors_from_db(*, backend: str, org_id: str = "ACME") -> dict[str, int]:
+async def rebuild_vectors_from_db(*, backend: str, org_id: str = "ACME") -> dict[str, int | str]:
     """Rebuild the selected vector index from existing kb_chunks.
 
     Use this when the active RAG backend changes (e.g., local -> gemini) but the
     KB text itself did not.
     """
+    from app.llm.providers import LLMError
+
     conn = connect_vec()
     try:
         ensure_vec_schema(conn, backend=backend)
-        # Pull all chunks and rebuild the selected vector table from scratch.
+
         rows = conn.execute(
             """
             SELECT c.chunk_id, d.title AS doc_title, c.section_title, c.text
@@ -172,6 +174,11 @@ async def rebuild_vectors_from_db(*, backend: str, org_id: str = "ACME") -> dict
             """
         ).fetchall()
 
+        # If there are no chunks, nothing to rebuild.
+        if not rows:
+            return {"chunks": 0, "vectors": 0, "backend_used": backend}
+
+        # Start by clearing the target table for the selected backend.
         table = "kb_vec_gemini" if backend == "gemini" else "kb_vec_local"
         conn.execute(f"DELETE FROM {table}")
         conn.commit()
@@ -181,24 +188,28 @@ async def rebuild_vectors_from_db(*, backend: str, org_id: str = "ACME") -> dict
 
         batch_size = 16
         embeddings: list[list[float]] = []
+
         try:
-    for i in range(0, len(texts), batch_size):
-        embeddings.extend(await embed_texts(texts[i : i + batch_size], org_id=org_id, backend=backend))
-except Exception as e:
-    # If Gemini embeddings fail (missing/invalid key, quota, etc.), fall back to local so startup/install
-    # isn't held hostage by external credentials.
-    from app.llm.providers import LLMError
-    if backend == "gemini" and isinstance(e, LLMError):
-        backend = "local"
-        ensure_vec_schema(conn, backend=backend)
-        table = "kb_vec_local"
-        conn.execute(f"DELETE FROM {table}")
-        conn.commit()
-        embeddings = []
-        for i in range(0, len(texts), batch_size):
-            embeddings.extend(await embed_texts(texts[i : i + batch_size], org_id=org_id, backend=backend))
-    else:
-        raise
+            for i in range(0, len(texts), batch_size):
+                embeddings.extend(await embed_texts(texts[i : i + batch_size], org_id=org_id, backend=backend))
+        except LLMError:
+            # If Gemini embeddings fail (missing/invalid key, quota, etc.),
+            # fall back to local so startup isn't held hostage.
+            if backend == "gemini":
+                backend = "local"
+                ensure_vec_schema(conn, backend=backend)
+                table = "kb_vec_local"
+                conn.execute(f"DELETE FROM {table}")
+                conn.commit()
+
+                embeddings = []
+                for i in range(0, len(texts), batch_size):
+                    embeddings.extend(await embed_texts(texts[i : i + batch_size], org_id=org_id, backend=backend))
+            else:
+                raise
+
+        # Recompute table in case backend changed during fallback.
+        table = "kb_vec_gemini" if backend == "gemini" else "kb_vec_local"
 
         cur = conn.cursor()
         for cid, emb in zip(chunk_ids, embeddings):
@@ -207,6 +218,7 @@ except Exception as e:
                 (cid, struct.pack("%sf" % len(emb), *emb)),
             )
         conn.commit()
+
         return {"chunks": len(rows), "vectors": len(rows), "backend_used": backend}
     finally:
         conn.close()
@@ -344,8 +356,8 @@ async def ingest_kb_dir(kb_dir: Path, *, org_id: str = "ACME") -> dict[str, int]
                 raise
 
         cur = conn.cursor()
+        table = "kb_vec_gemini" if backend == "gemini" else "kb_vec_local"
         for (chunk_id, _), emb in zip(chunk_payloads, embeddings):
-            table = "kb_vec_gemini" if backend == "gemini" else "kb_vec_local"
             cur.execute(
                 f"INSERT OR REPLACE INTO {table}(chunk_id, embedding) VALUES (?, ?)",
                 (chunk_id, struct.pack("%sf" % len(emb), *emb)),
@@ -401,6 +413,7 @@ async def ensure_kb_fresh(kb_dir: Path, *, org_id: str = "ACME") -> dict[str, in
             _set_kb_state("kb_last_backend", used_backend)
         except Exception:
             pass
-        return {"files": 0, "docs": doc_count, **stats}
+        # Merge stats into the same return shape used elsewhere.
+        return {"files": 0, "docs": doc_count, **{k: int(v) if isinstance(v, bool) else v for k, v in stats.items() if k != "backend_used"}, "backend_used": used_backend}
 
     return {"files": 0, "docs": doc_count, "chunks": 0}

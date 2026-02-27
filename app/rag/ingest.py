@@ -357,6 +357,14 @@ async def ingest_kb_dir(kb_dir: Path, *, org_id: str = "ACME") -> dict[str, int]
 
         cur = conn.cursor()
         table = "kb_vec_gemini" if backend == "gemini" else "kb_vec_local"
+
+        # IMPORTANT:
+        # sqlite-vec virtual tables (vec0) can throw UNIQUE constraint errors on
+        # repeated ingestion runs even when using INSERT OR REPLACE.
+        # To make `make install` idempotent, clear the selected vector table
+        # before inserting the newly computed embeddings.
+        cur.execute(f"DELETE FROM {table}")
+
         for (chunk_id, _), emb in zip(chunk_payloads, embeddings):
             cur.execute(
                 f"INSERT OR REPLACE INTO {table}(chunk_id, embedding) VALUES (?, ?)",

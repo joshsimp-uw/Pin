@@ -1,7 +1,7 @@
 ---
-doc_id: KB-982E4A9480-real_time_
-title: "Endpoint Security \u2014 Microsoft Endpoint Protection \u2014 Real-time protection\
-  \ is off"
+doc_id: KB-982E4A9480-blocked_we
+title: "Endpoint Security \u2014 Microsoft Endpoint Protection \u2014 Blocked website\
+  \ or download"
 service: Microsoft Endpoint Protection
 audience:
 - End Users
@@ -13,35 +13,43 @@ tags:
 - security
 - defender
 - endpoint_protection
-- real_time_protection_is_off
+- blocked_website_or_download
 ---
 
-# Real-time protection is off
+# Blocked website or download
 
 # Microsoft Endpoint Protection
 
 Protection runs automatically on ACME devices. Do not disable security features.
 
-### Real-time protection is off
+### Blocked website or download
 
-**Severity:** `S2` — Major degradation; user work significantly impacted. Escalate within same business day.
+## Severity:
+`S3` — Minor issue or how-to; workaround exists. Resolve via KB or standard ticket queue.
 
-**Symptoms**
-- Windows Security shows protection turned off
-- Warnings persist after reboot
+## Symptoms
+- Website blocked
+- Download prevented
+- Message says content is unsafe
 
-**Quick checks**
-- Restart device
-- Install Windows updates
+## Quick checks
+- Confirm the site is required for work
+- Try a different official source if available
 
-**Fix steps**
-1. Restart your device.
-2. Install pending Windows updates and restart again.
-3. If protection remains off, contact IT.
+## Fix steps
+1. If the site/download is work-related, capture the URL and the block message.
+2. Submit a request to IT for review.
 
-**Escalate if**
-- Protection cannot be re-enabled
-- You see messages about 'managed by your organization' and it still shows off
+## Escalate if
+- You believe your account/device is compromised
+- You cannot perform your job due to required site block
 
-**Ticket fields to capture (when escalating)**
-- **Screenshot:** Windows Security page
+## Ticket fields to capture (when escalating)
+- Blocked URL: Copy/paste
+- Business justification: What task requires it
+
+
+## Escalation logic (for chatbot / help desk)
+- Malware/threat detected → **S1**
+- Protection disabled and cannot be enabled → **S2**
+- Benign blocks with a workaround → **S3**

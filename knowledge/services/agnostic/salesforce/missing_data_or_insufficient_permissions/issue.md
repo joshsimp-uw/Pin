@@ -31,28 +31,29 @@ urls:
 
 ### Missing data or insufficient permissions
 
-**Severity:** `S2` — Major degradation; user work significantly impacted. Escalate within same business day.
+## Severity:
+`S2` — Major degradation; user work significantly impacted. Escalate within same business day.
 
-**Symptoms**
+## Symptoms
 - You can't see records you expect
 - Buttons/features missing
 - Permission denied messages
 
-**Quick checks**
+## Quick checks
 - Confirm you're in the correct Salesforce app/workspace
 - Check filters and views
 
-**Fix steps**
+## Fix steps
 1. Verify the record isn't filtered out (views/filters).
 2. If you still cannot access, request permission changes via IT/CRM admin.
 
-**Escalate if**
+## Escalate if
 - You need access for business-critical workflow and cannot proceed
 - Multiple users affected
 
-**Ticket fields to capture (when escalating)**
-- **What access is needed:** Object/record type
-- **Example record:** ID or name if known
+## Ticket fields to capture (when escalating)
+- What access is needed: Object/record type
+- Example record: ID or name if known
 
 
 ## Escalation logic (for chatbot / help desk)

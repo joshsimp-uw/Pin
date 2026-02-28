@@ -27,28 +27,29 @@ SharePoint stores team and department documents. ACME tenant: https://acme.share
 
 ### Sync issues with SharePoint folder
 
-**Severity:** `S2` — Major degradation; user work significantly impacted. Escalate within same business day.
+## Severity:
+`S2` — Major degradation; user work significantly impacted. Escalate within same business day.
 
-**Symptoms**
+## Symptoms
 - Folder not updating
 - Errors in sync client
 
-**Quick checks**
+## Quick checks
 - Confirm OneDrive sync client is running
 - Try re-syncing the library
 
-**Fix steps**
+## Fix steps
 1. Restart OneDrive sync client.
 2. Stop syncing the library and set it up again.
 3. If errors persist, capture the error message and contact IT.
 
-**Escalate if**
+## Escalate if
 - Multiple libraries fail to sync
 - Work files missing
 
-**Ticket fields to capture (when escalating)**
-- **Library name:** Which team/site
-- **Error message:** As shown
+## Ticket fields to capture (when escalating)
+- Library name: Which team/site
+- Error message: As shown
 
 
 ## Escalation logic (for chatbot / help desk)

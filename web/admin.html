@@ -55,10 +55,30 @@
               <span class="count">📚</span>
             </button>
 
-            <button data-view="users">
-              <span>Users</span>
-              <span class="count">👤</span>
-            </button>
+            <div class="nav-group" data-group="users">
+              <button class="nav-group-toggle" type="button" data-group-toggle="users">
+                <span>Users</span>
+                <span class="count">👤</span>
+              </button>
+              <div class="nav-sub" data-group-body="users" style="display:none">
+                <button data-view="users_list" type="button">
+                  <span>All Users</span>
+                  <span class="count">📋</span>
+                </button>
+                <button data-view="users_new" type="button">
+                  <span>New User</span>
+                  <span class="count">＋</span>
+                </button>
+                <button data-view="users_modify" type="button">
+                  <span>Modify User</span>
+                  <span class="count">✎</span>
+                </button>
+                <button data-view="users_disable" type="button">
+                  <span>Remove User</span>
+                  <span class="count">⛔</span>
+                </button>
+              </div>
+            </div>
 
             <button data-view="flows">
               <span>Flow Rules</span>

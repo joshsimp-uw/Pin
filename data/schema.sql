@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS users (
   last_name     TEXT,
   email         TEXT,
   role          TEXT NOT NULL DEFAULT 'end_user', -- end_user|admin|agent
+  is_disabled   INTEGER NOT NULL DEFAULT 0, -- 0=active, 1=disabled (historical data retained)
+  disabled_at   TEXT,
   dept_id       INTEGER,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (org_id) REFERENCES orgs(org_id) ON DELETE CASCADE,

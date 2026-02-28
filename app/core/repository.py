@@ -57,8 +57,8 @@ def ensure_user(
     try:
         conn.execute(
             """
-            INSERT INTO users(user_id, org_id, first_name, last_name, email, role, dept_id)
-            VALUES(?,?,?,?,?,?,?)
+            INSERT INTO users(user_id, org_id, first_name, last_name, email, role, dept_id, is_disabled)
+            VALUES(?,?,?,?,?,?,?, COALESCE((SELECT is_disabled FROM users WHERE user_id=?), 0))
             ON CONFLICT(user_id) DO UPDATE SET
               org_id=excluded.org_id,
               first_name=COALESCE(excluded.first_name, users.first_name),
@@ -67,9 +67,81 @@ def ensure_user(
               role=COALESCE(excluded.role, users.role),
               dept_id=COALESCE(excluded.dept_id, users.dept_id)
             """,
-            (user_id, org_id, first_name, last_name, email, role, dept_id),
+            (user_id, org_id, first_name, last_name, email, role, dept_id, user_id),
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+def get_user(org_id: str, user_id: str) -> dict[str, Any] | None:
+    conn = connect()
+    try:
+        row = conn.execute(
+            """
+            SELECT user_id, org_id, first_name, last_name, email, role,
+                   COALESCE(is_disabled, 0) AS is_disabled, disabled_at, created_at
+            FROM users
+            WHERE org_id=? AND user_id=?
+            """,
+            (org_id, user_id),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_user(
+    *,
+    org_id: str,
+    user_id: str,
+    first_name: str | None = None,
+    last_name: str | None = None,
+    role: str | None = None,
+) -> bool:
+    conn = connect()
+    try:
+        cur = conn.execute(
+            """
+            UPDATE users
+            SET first_name=COALESCE(?, first_name),
+                last_name=COALESCE(?, last_name),
+                role=COALESCE(?, role)
+            WHERE org_id=? AND user_id=?
+            """,
+            (first_name, last_name, role, org_id, user_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def set_user_disabled(*, org_id: str, user_id: str, disabled: bool) -> bool:
+    conn = connect()
+    try:
+        if disabled:
+            cur = conn.execute(
+                """
+                UPDATE users
+                SET is_disabled=1,
+                    disabled_at=COALESCE(disabled_at, datetime('now'))
+                WHERE org_id=? AND user_id=?
+                """,
+                (org_id, user_id),
+            )
+        else:
+            cur = conn.execute(
+                """
+                UPDATE users
+                SET is_disabled=0,
+                    disabled_at=NULL
+                WHERE org_id=? AND user_id=?
+                """,
+                (org_id, user_id),
+            )
+        conn.commit()
+        return cur.rowcount > 0
     finally:
         conn.close()
 
@@ -358,7 +430,9 @@ def list_users(org_id: str, limit: int = 200) -> list[dict[str, Any]]:
     try:
         cur = conn.execute(
             """
-            SELECT user_id, first_name, last_name, email, role, created_at
+            SELECT user_id, first_name, last_name, email, role,
+                   COALESCE(is_disabled, 0) AS is_disabled, disabled_at,
+                   created_at
             FROM users
             WHERE org_id=?
             ORDER BY created_at DESC

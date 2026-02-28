@@ -91,6 +91,11 @@ body{
   font-size:12px;
 }
 
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width: 820px){.form-grid{grid-template-columns:1fr}}
+.field label{display:block;font-size:12px;color:var(--muted);font-weight:800;letter-spacing:.03em;margin-bottom:6px}
+.field input{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:white;font-size:14px}
+
 /* ACME Logo (simple) */
 .acme-logo{
   display:flex;
@@ -258,6 +263,10 @@ footer{
   flex-direction:column;
   gap:6px;
 }
+
+.nav-group{display:flex;flex-direction:column;gap:6px}
+.nav-sub{display:flex;flex-direction:column;gap:6px;margin-left:12px;padding-left:10px;border-left:2px solid rgba(0,16,80,.08)}
+.nav-group-toggle{font-weight:800}
 .nav button{
   width:100%;
   text-align:left;

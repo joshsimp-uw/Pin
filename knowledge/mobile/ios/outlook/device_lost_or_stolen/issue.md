@@ -27,25 +27,26 @@ Recommended apps: Outlook, Authenticator, OneDrive.
 
 ### Device lost or stolen
 
-**Severity:** `S1` — Service down or security risk; user blocked and/or potential compromise. Immediate escalation.
+## Severity:
+`S1` — Service down or security risk; user blocked and/or potential compromise. Immediate escalation.
 
-**Symptoms**
+## Symptoms
 - You no longer have the phone
 - Concern about account access
 
-**Quick checks**
+## Quick checks
 - Do not approve MFA prompts
 - Change password immediately if possible
 
-**Fix steps**
+## Fix steps
 1. Change your ACME password from another device (if possible).
 2. Contact IT immediately to secure your account.
 
-**Escalate if**
+## Escalate if
 - Always (security event)
 
-**Ticket fields to capture (when escalating)**
-- **Last known time:** Approx time/date
+## Ticket fields to capture (when escalating)
+- Last known time: Approx time/date
 
 
 ## Escalation logic (for chatbot / help desk)

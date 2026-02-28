@@ -17,6 +17,7 @@ from app.llm.providers import LLMError, get_llm
 from app.models.schemas import AnswerResponse, ActionResponse, Action, ChatRequest, ChatResponse, Ticket, TicketResponse
 from app.policies.guardrails import check_response, should_escalate
 from app.rag.index import retrieve
+import json
 
 router = APIRouter(tags=["chat"])
 

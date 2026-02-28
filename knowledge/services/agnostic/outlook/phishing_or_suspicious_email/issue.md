@@ -61,8 +61,3 @@ urls:
 - Suspected phishing or credential entry → **S1**
 - Mail send/receive broken across web + desktop → **S2**
 - Single device/app issue with workaround (web works) → **S3**
-
-## Escalation logic (for chatbot / help desk)
-- Suspected phishing or credential entry → **S1**
-- Mail send/receive broken across web + desktop → **S2**
-- Single device/app issue with workaround (web works) → **S3**

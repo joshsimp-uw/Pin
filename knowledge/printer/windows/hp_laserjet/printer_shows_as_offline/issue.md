@@ -25,25 +25,26 @@ ACME remote users connect printers directly via **USB**.
 
 ### Printer shows as Offline
 
-**Severity:** `S3` — Minor issue or how-to; workaround exists. Resolve via KB or standard ticket queue.
+## Severity:
+`S3` — Minor issue or how-to; workaround exists. Resolve via KB or standard ticket queue.
 
-**Symptoms**
+## Symptoms
 - Windows shows 'Offline'
 - Cannot set as default
 - Queue errors
 
-**Quick checks**
+## Quick checks
 - Check USB connection
 - Ensure the correct printer is selected
 
-**Fix steps**
+## Fix steps
 1. In Windows printer settings, set the HP printer as default.
 2. Remove the printer and re-add it if it remains offline.
 3. Restart both printer and computer.
 
-**Escalate if**
+## Escalate if
 - Offline status returns immediately after re-adding
 - Driver install fails
 
-**Ticket fields to capture (when escalating)**
-- **Screenshot:** Printer status screen
+## Ticket fields to capture (when escalating)
+- Screenshot: Printer status screen

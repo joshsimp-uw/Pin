@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from app.core.auth import require_admin, require_user

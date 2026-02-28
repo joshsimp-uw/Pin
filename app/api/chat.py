@@ -17,6 +17,7 @@ from app.llm.providers import LLMError, get_llm
 from app.models.schemas import AnswerResponse, ActionResponse, Action, ChatRequest, ChatResponse, Ticket, TicketResponse
 from app.policies.guardrails import check_response, should_escalate
 from app.rag.index import retrieve
+import json
 
 router = APIRouter(tags=["chat"])
 
@@ -40,267 +41,60 @@ def _extract_kv(message: str) -> dict[str, str]:
     return out
 
 
-def _heuristic_field_guess(message: str, required_fields: list[str] | None = None) -> dict[str, Any]:
-    """Heuristically infer answers to flow questions from natural language.
-
-    Returns only fields we can confidently extract.
-    If required_fields is provided, we limit inference to those names to avoid extra noise.
-    """
-
-    text = message.strip()
-    t = text.lower()
-    wants: set[str] | None = set(required_fields) if required_fields else None
-    out: dict[str, Any] = {}
-
-    def need(name: str) -> bool:
-        return True if wants is None else (name in wants)
-
-    # ---------------------------
-    # Common helpers
-    # ---------------------------
-    YES = {"yes", "y", "yeah", "yep", "works", "working", "ok", "okay", "fine", "success"}
-    NO = {
-        "no",
-        "n",
-        "nope",
-        "not",
-        "doesnt",
-        "doesn't",
-        "cant",
-        "can't",
-        "cannot",
-        "broken",
-        "fails",
-        "failing",
-        "failed",
-        "error",
+async def _llm_field_extract(message: str, required_fields: list[str], org_id: str) -> dict[str, Any]:
+    """Use the LLM to intelligently extract missing required fields from the user's message."""
+    if not required_fields:
+        return {}
+    
+    # Gemini requires uppercase types for its schema
+    schema = {
+        "type": "OBJECT",
+        "properties": {
+            field: {"type": "STRING"} for field in required_fields
+        }
     }
-    UNSURE = {"unsure", "maybe", "not sure", "unknown", "don't know", "dont know", "idk"}
-
-    def norm_yes_no(txt: str) -> str | None:
-        w = txt.lower()
-        if any(wd in w for wd in YES):
-            return "yes"
-        if any(wd in w for wd in NO):
-            return "no"
-        if any(wd in w for wd in UNSURE):
-            return "unsure"
-        return None
-
-    # ---------------------------
-    # summary  (fallback flow)
-    # ---------------------------
-    if need("summary"):
-        # First sentence up to 120 chars, for concise summaries
-        import re as _re
-
-        first = _re.split(r"[.\n]", text, maxsplit=1)[0].strip()
-        if first:
-            out.setdefault("summary", first[:120])
-
-    # ---------------------------
-    # os  (used in multiple flows)
-    # ---------------------------
-    if need("os"):
-        if re.search(r"\bwin(dows)?\s*11\b", t):
-            out.setdefault("os", "Windows 11")
-        elif re.search(r"\bwin(dows)?\s*10\b", t):
-            out.setdefault("os", "Windows 10")
-        elif "windows" in t:
-            out.setdefault("os", "Windows")
-        elif any(k in t for k in ["macos", "os x", "osx", "mac"]):
-            out.setdefault("os", "macOS")
-        elif any(k in t for k in ["ubuntu", "debian", "mint", "linux"]):
-            out.setdefault("os", "Linux")
-        elif any(k in t for k in ["iphone", "ipad", "ios"]):
-            out.setdefault("os", "iOS")
-        elif "android" in t:
-            out.setdefault("os", "Android")
-
-    # ---------------------------
-    # device_type  (fallback, vpn, wifi)
-    # ---------------------------
-    if need("device_type"):
-        if any(k in t for k in ["laptop", "notebook", "macbook", "thinkpad"]):
-            out.setdefault("device_type", "laptop")
-        elif any(k in t for k in ["desktop", "workstation", "tower"]):
-            out.setdefault("device_type", "desktop")
-        elif any(k in t for k in ["phone", "mobile", "cell", "iphone", "android"]):
-            out.setdefault("device_type", "phone")
-        elif any(k in t for k in ["ipad", "tablet"]):
-            out.setdefault("device_type", "tablet")
-
-    # ---------------------------
-    # network_type  (vpn)
-    # ---------------------------
-    if need("network_type"):
-        if any(k in t for k in ["hotspot", "tether", "cellular", "lte", "5g"]):
-            out.setdefault("network_type", "mobile hotspot")
-        elif any(k in t for k in ["office", "on-site", "onsite", "campus", "corporate"]):
-            out.setdefault("network_type", "on-site network")
-        elif any(k in t for k in ["home", "house", "apartment"]):
-            out.setdefault("network_type", "home wi-fi")
-        elif any(k in t for k in ["wifi", "wi-fi", "wireless", "ssid"]):
-            out.setdefault("network_type", "wi-fi")
-
-    # ---------------------------
-    # error_message  (vpn, wifi)
-    # ---------------------------
-    if need("error_message"):
-        # Quoted phrases or "error ..." fragments or numeric codes
-        m = re.search(r"\berror(?:\s*code)?\s*[:#]?\s*([A-Za-z0-9._-]{2,})", text, flags=re.I)
-        if m:
-            out.setdefault("error_message", m.group(0).strip())
-        else:
-            # Common phrasing like "No Internet", "Connected without Internet"
-            m2 = re.search(
-                r"\b(no internet|connected without internet|authentication failed|timed out)\b",
-                t,
-                flags=re.I,
-            )
-            if m2:
-                out.setdefault("error_message", m2.group(0))
-            else:
-                m3 = re.search(r"\b\d{3,5}\b", text)  # numeric error code alone
-                if m3:
-                    out.setdefault("error_message", f"error {m3.group(0)}")
-
-    # ---------------------------
-    # mfa_working  (vpn)
-    # ---------------------------
-    if need("mfa_working"):
-        if any(k in t for k in ["mfa", "2fa", "two-factor", "authenticator"]):
-            v = norm_yes_no(t)
-            if v:
-                out.setdefault("mfa_working", v)
-        # "I can sign into other apps" → infer yes
-        if "other" in t and any(k in t for k in ["works", "working", "ok", "okay", "fine"]):
-            out.setdefault("mfa_working", "yes")
-
-    # ---------------------------
-    # client  (email)
-    # ---------------------------
-    if need("client"):
-        if any(k in t for k in ["outlook desktop", "outlook app"]):
-            out.setdefault("client", "Outlook")
-        elif any(k in t for k in ["outlook", "owa", "webmail", "browser"]):
-            out.setdefault("client", "OWA")
-        elif any(k in t for k in ["apple mail", "mail.app", "mail app"]):
-            out.setdefault("client", "Apple Mail")
-        elif any(k in t for k in ["gmail app", "android mail", "iphone mail", "ios mail", "mobile app"]):
-            out.setdefault("client", "mobile app")
-
-    # ---------------------------
-    # symptom  (email)
-    # ---------------------------
-    if need("symptom"):
-        if any(
-            k in t
-            for k in ["can't sign in", "cant sign in", "signin", "sign in", "login", "log in", "auth"]
-        ):
-            out.setdefault("symptom", "can't sign in")
-        elif any(k in t for k in ["missing mail", "email missing", "disappeared", "can't find", "cant find"]):
-            out.setdefault("symptom", "missing mail")
-        elif any(k in t for k in ["bounce", "bounced", "undeliverable", "nondelivery", "ndr"]):
-            out.setdefault("symptom", "bounce")
-        elif any(k in t for k in ["delay", "delayed", "slow delivery", "late"]):
-            out.setdefault("symptom", "delayed delivery")
-
-    # ---------------------------
-    # scope  (email)
-    # ---------------------------
-    if need("scope"):
-        if any(k in t for k in ["only me", "just me", "my account", "i'm the only one", "im the only one"]):
-            out.setdefault("scope", "just me")
-        elif any(k in t for k in ["everyone", "all users", "team", "multiple", "others too", "widespread"]):
-            out.setdefault("scope", "multiple users")
-        elif any(k in t for k in ["unsure", "not sure", "idk", "unknown"]):
-            out.setdefault("scope", "unsure")
-
-    # ---------------------------
-    # location  (wifi)
-    # ---------------------------
-    if need("location"):
-        if any(k in t for k in ["office", "on-site", "onsite", "campus", "work"]):
-            out.setdefault("location", "on-site")
-        elif any(k in t for k in ["home", "house", "apartment"]):
-            out.setdefault("location", "home")
-        elif any(k in t for k in ["coffee", "hotel", "airport", "public"]):
-            out.setdefault("location", "public")
-
-    # ---------------------------
-    # scope  (wifi)
-    # ---------------------------
-    if need("scope"):
-        if any(k in t for k in ["only me", "just me", "my laptop", "my phone"]):
-            out.setdefault("scope", "single device")
-        elif any(k in t for k in ["everyone", "all", "whole", "entire", "building", "floor"]):
-            out.setdefault("scope", "multiple users")
-
-    # ---------------------------
-    # in_office  (printer)
-    # ---------------------------
-    if need("in_office"):
-        if any(k in t for k in ["in office", "at work", "on site", "onsite", "campus"]):
-            out.setdefault("in_office", "yes")
-        elif any(k in t for k in ["remote", "at home", "home"]):
-            out.setdefault("in_office", "no")
-
-    # ---------------------------
-    # printer_name  (printer)
-    # ---------------------------
-    if need("printer_name"):
-        m = re.search(r"\bprinter\s+([A-Za-z0-9._-]{2,})\b", text, flags=re.I)
-        if m:
-            out.setdefault("printer_name", m.group(1))
-
-    # ---------------------------
-    # print_queue  (printer)
-    # ---------------------------
-    if need("print_queue"):
-        m = re.search(r"\b(queue|print queue)\s*[:#]?\s*([A-Za-z0-9._-]{2,})\b", text, flags=re.I)
-        if m:
-            out.setdefault("print_queue", m.group(2))
-
-    # ---------------------------
-    # issue_type (printer)
-    # ---------------------------
-    if need("issue_type"):
-        if any(k in t for k in ["stuck", "queued", "pending", "won't print", "cant print", "can't print"]):
-            out.setdefault("issue_type", "stuck queue")
-        elif any(k in t for k in ["offline", "not responding"]):
-            out.setdefault("issue_type", "offline")
-        elif any(k in t for k in ["driver", "install"]):
-            out.setdefault("issue_type", "driver")
-
-    return out
+    
+    prompt = (
+        f"Extract the following fields from the user's IT support request if they are present: {', '.join(required_fields)}.\n"
+        f"User message: '{message}'\n"
+        "Only extract values explicitly mentioned or clearly implied. For example, if they mention an iPhone, the OS is iOS. "
+        "Leave fields out or set to null if you are unsure."
+    )
+    
+    llm = get_llm(org_id=org_id)
+    try:
+        result_str = await llm.chat([{"role": "user", "content": prompt}], response_format=schema)
+        return json.loads(result_str)
+    except Exception as e:
+        print(f"LLM Extraction failed: {e}")
+        return {} # Fallback to empty if LLM fails
 
 
-def _merge_collected(state: SessionState, req: ChatRequest) -> None:
+# Change definition to async and pass org_id
+async def _merge_collected(state: SessionState, req: ChatRequest, org_id: str) -> None:
     # 1) Parse explicit kv fields first
     kv = _extract_kv(req.message)
     for k, v in kv.items():
         if k not in state.collected:
             state.collected[k] = v
 
-    # 2) Heuristic guesses, but only for missing required fields
+    # 2) LLM guesses for missing required fields
     flow = registry.get(state.category)
     required = list(getattr(flow, "required_fields", []) or [])
     missing = [f for f in required if f not in state.collected]
+    
     if missing:
-        guessed = _heuristic_field_guess(req.message, required_fields=missing)
+        guessed = await _llm_field_extract(req.message, required_fields=missing, org_id=org_id)
         for k, v in guessed.items():
-            if k not in state.collected and v is not None:
+            if k not in state.collected and v is not None and str(v).strip() != "":
                 state.collected[k] = v
 
-    # 3) Accept explicit context from client as collected (safe fields)
-    # Allow "context" fields to be promoted into collected if they match required.
+    # 3) Accept explicit context from client as collected
     if req.context:
         for k, v in req.context.items():
             kk = str(k).strip().lower()
             if kk in missing and v is not None:
                 state.collected.setdefault(kk, v)
-
 
 def _render_ticket(t: Ticket) -> str:
     lines: list[str] = []
@@ -365,15 +159,9 @@ def create_session(authorization: str | None = Header(default=None)) -> dict[str
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest, authorization: str | None = Header(default=None)):
-    """Chat with the assistant.
-
-    Org/user are derived from the authenticated session (Bearer token). This prevents
-    callers from spoofing org_id/user_id and ensures RAG + LLM settings resolve
-    against the correct org configuration from the admin portal.
-    """
+    """Chat with the assistant."""
     u = require_user(bearer_token(authorization))
 
-    # Ensure org/user exist (idempotent). In a per-org DB deployment, org_id is typically constant.
     ensure_org(u.org_id, name=u.org_id)
     ensure_user(
         org_id=u.org_id,
@@ -384,7 +172,6 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
         role=u.role,
     )
 
-    # Load or create session (must belong to the authenticated user)
     state = load_session(req.session_id) if req.session_id else new_session(org_id=u.org_id, user_id=u.user_id)
     if state.org_id != u.org_id or state.user_id != u.user_id:
         raise HTTPException(status_code=403, detail="Session does not belong to the current user")
@@ -392,19 +179,16 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
         raise HTTPException(status_code=400, detail="Chat is closed. Start a new chat to continue.")
     state.turns += 1
 
-    # Categorize once (sticky)
     if not state.category:
         state.category = registry.classify(req.message)
 
     flow = registry.get(state.category)
 
-    # Merge user/context info into collected fields
-    _merge_collected(state, req)
+    # 1. NEW: Call the async merge function using the LLM
+    await _merge_collected(state, req, u.org_id)
 
-    # Persist user message (chat transcript)
     insert_message(session_id=state.session_id, role="user", content=req.message)
 
-    # Set a chat title from the first meaningful user message (UI convenience)
     if not state.title:
         first = req.message.strip().split("\n", 1)[0].strip()
         if first:
@@ -414,7 +198,6 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
             except Exception:
                 pass
 
-    # Handle any pending action prompts (escalate/close)
     pending = (state.collected or {}).get("_pending_action")
     if pending:
         msg = req.message.strip().lower()
@@ -453,14 +236,11 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
             state.collected.pop("_pending_action", None)
             save_session(state)
         else:
-            # Ask again without progressing the flow
             prompt = str(pending.get("prompt") or "Please reply yes or no.")
             insert_message(session_id=state.session_id, role="assistant", content=prompt)
             save_session(state)
             return ActionResponse(message=prompt, actions=[Action(action_id="yes", label="Yes"), Action(action_id="no", label="No")], meta={"pending": pending.get("type")})
 
-    # Gate: required fields
-    # If the user indicates the issue is resolved, offer to close the chat.
     msg_l = req.message.strip().lower()
     if any(k in msg_l for k in ["resolved", "fixed", "that worked", "solved", "thank you", "thanks", "thx"]):
         prompt = "Glad to hear it. Would you like to close this chat?"
@@ -472,7 +252,6 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
     missing = next_missing_field(flow, state.collected)
     if missing:
         q = question_for(flow, missing)
-        # Persist assistant prompt/question
         insert_message(session_id=state.session_id, role="assistant", content=q)
         save_session(state)
         return AnswerResponse(
@@ -482,52 +261,24 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
             collected=state.collected,
         )
 
-    # If the user is asking about an unsupported device/OS/app, escalate immediately.
-    supported, unsupported_reason = is_supported_request(
-        message=req.message,
-        category=state.category or "unknown",
-        collected=state.collected,
-        kb_dir=Path(settings.kb_dir),
+    # 2. IMPROVE RETRIEVAL: LLM Query Rewriting
+    llm = get_llm(org_id=u.org_id)
+    rewrite_prompt = (
+        "Rewrite the following IT support issue and gathered context into a concise, keyword-rich semantic search query. "
+        "Do not include conversational filler, just the core technical entities, errors, and intent.\n"
+        f"User Issue: {req.message}\n"
+        f"Context: {state.collected}"
     )
-    if not supported:
-        # Ask before escalating to a ticket
-        ticket = Ticket(
-            summary=state.collected.get("summary") or req.message.strip()[:120],
-            category=state.category or "unknown",
-            user={
-                "org_id": u.org_id,
-                "user_id": u.user_id,
-                **{k: v for k, v in req.context.items() if k.startswith("user_")},
-            },
-            device={k: v for k, v in req.context.items() if k.startswith("device_")},
-            diagnostics=state.collected,
-            steps_attempted=state.steps_attempted,
-            error_text=str(state.collected.get("error_message") or "") or None,
-            escalation_reason=unsupported_reason or "Unsupported device/OS/application",
-            citations=[],
-        )
-        prompt = (
-            f"I can’t safely guide this one using our supported KB scope ({ticket.escalation_reason}). "
-            "Would you like to escalate this chat to a ticket?"
-        )
-        state.collected["_pending_action"] = {
-            "type": "escalate_to_ticket",
-            "prompt": prompt,
-            "draft": ticket.model_dump(),
-        }
-        insert_message(session_id=state.session_id, role="assistant", content=prompt)
-        save_session(state)
-        return ActionResponse(
-            message=prompt,
-            actions=[Action(action_id="escalate", label="Escalate to ticket"), Action(action_id="no", label="Keep chatting")],
-            meta={"pending": "escalate_to_ticket"},
-        )
+    
+    try:
+        query = await llm.chat([{"role": "user", "content": rewrite_prompt}])
+    except Exception:
+        # Fallback if the LLM fails
+        query = req.message + "\n" + "\n".join([f"{k}: {v}" for k, v in sorted(state.collected.items())])
 
-    # Retrieve docs based on message + collected context
-    query = req.message + "\n" + "\n".join([f"{k}: {v}" for k, v in sorted(state.collected.items())])
     citations, best_score = await retrieve(query, org_id=u.org_id)
 
-    # Decide escalation
+    # 3. Softened escalation: Escalate based on retrieval score and turns, not hardcoded paths
     esc, esc_reason = should_escalate(state.turns, best_score)
     if esc:
         ticket = Ticket(
@@ -562,7 +313,6 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
             meta={"pending": "escalate_to_ticket"},
         )
 
-    # Compose prompt grounded in citations
     system = (
         "You are a Tier 0/Tier 1 IT support technician for a single company. "
         "Stay in scope. Use ONLY the provided KB excerpts as your source of truth. "
@@ -579,7 +329,6 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
         "Respond with: (1) a short diagnosis, (2) numbered steps, (3) what to report back."
     )
 
-    llm = get_llm(org_id=u.org_id)
     try:
         content = await llm.chat(
             [
@@ -620,7 +369,6 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
             meta={"pending": "escalate_to_ticket"},
         )
 
-
     insert_message(
         session_id=state.session_id,
         role="assistant",
@@ -629,3 +377,4 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
     )
     save_session(state)
     return AnswerResponse(message=content, citations=citations, collected=state.collected)
+

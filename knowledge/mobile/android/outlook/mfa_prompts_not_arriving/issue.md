@@ -26,24 +26,25 @@ Common setups: Outlook app, Authenticator app, OneDrive app.
 
 ### MFA prompts not arriving
 
-**Severity:** `S2` — Major degradation; user work significantly impacted. Escalate within same business day.
+## Severity:
+`S2` — Major degradation; user work significantly impacted. Escalate within same business day.
 
-**Symptoms**
+## Symptoms
 - No push notifications
 - Authenticator shows no request
 
-**Quick checks**
+## Quick checks
 - Enable notifications for Authenticator
 - Open Authenticator manually
 
-**Fix steps**
+## Fix steps
 1. Open Authenticator and check for pending approvals.
 2. Enable notifications for the app.
 3. Restart the phone and try again.
 
-**Escalate if**
+## Escalate if
 - Lost phone or replaced phone
 - Repeated unexpected prompts (possible compromise)
 
-**Ticket fields to capture (when escalating)**
-- **Unexpected prompts:** Yes/No
+## Ticket fields to capture (when escalating)
+- Unexpected prompts: Yes/No

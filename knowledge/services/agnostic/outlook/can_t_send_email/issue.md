@@ -1,6 +1,7 @@
 ---
-doc_id: KB-6379EC8570-can_t_send
-title: "Email \u2014 Microsoft 365 (Outlook) for Remote Users \u2014 Can't send email"
+doc_id: KB-6379EC8570-not_receiv
+title: "Email \u2014 Microsoft 365 (Outlook) for Remote Users \u2014 Not receiving\
+  \ email"
 service: Microsoft 365 Email (Exchange Online)
 audience:
 - End Users
@@ -13,13 +14,13 @@ tags:
 - outlook
 - m365
 - exchange_online
-- can_t_send_email
+- not_receiving_email
 urls:
 - https://outlook.office.com
 - https://portal.office.com
 ---
 
-# Can't send email
+# Not receiving email
 
 # Microsoft 365 Email (Outlook)
 
@@ -27,29 +28,29 @@ urls:
 - Outlook on the web: https://outlook.office.com
 - Outlook desktop (if installed)
 
-### Can't send email
+### Not receiving email
 
 ## Severity:
 `S2` — Major degradation; user work significantly impacted. Escalate within same business day.
 
 ## Symptoms
-- Messages stay in Outbox
-- Send fails with an error
-- Recipients say they never received it
+- Expected messages never arrive
+- Only some senders affected
 
 ## Quick checks
-- Confirm you're online
-- Try sending from Outlook on the web to isolate the issue
+- Check Junk Email folder
+- Check Focused/Other tabs
+- Search for the sender or subject
 
 ## Fix steps
-1. Restart Outlook.
-2. Try sending the same message from https://outlook.office.com.
-3. If sending works on the web but not desktop, sign out of Outlook desktop and sign back in.
+1. Check Junk Email and move any legitimate messages to Inbox.
+2. Search your mailbox for the sender or subject keywords.
+3. Ask the sender to confirm the address is correct.
 
 ## Escalate if
-- Sending fails on both web and desktop
-- Error mentions account disabled or blocked
+- Multiple external senders report bounces
+- Mailbox appears full and you can’t delete items
 
 ## Ticket fields to capture (when escalating)
-- Where failing: Outlook desktop / Web / Both
-- Error message: Exact text or screenshot
+- Sender address: Who is sending
+- Approx time: When you expected the email

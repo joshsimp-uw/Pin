@@ -30,31 +30,37 @@ urls:
 
 ### Phishing or suspicious email
 
-**Severity:** `S1` — Service down or security risk; user blocked and/or potential compromise. Immediate escalation.
+## Severity:
+`S1` — Service down or security risk; user blocked and/or potential compromise. Immediate escalation.
 
-**Symptoms**
+## Symptoms
 - Message asks for password/payment
 - Unexpected attachments
 - Urgent threats or strange links
 
-**Quick checks**
+## Quick checks
 - Do not click links or open attachments
 - Do not reply with personal information
 
-**Fix steps**
+## Fix steps
 1. If you clicked a link or entered your password, change your password immediately (if possible).
 2. Report the email to IT (include sender, subject, and time received).
 3. Delete the email after reporting.
 
-**Escalate if**
+## Escalate if
 - You clicked a link or entered credentials
 - You opened an attachment and something unexpected happened
 
-**Ticket fields to capture (when escalating)**
-- **Did you click?:** Yes/No
-- **Did you enter credentials?:** Yes/No
-- **Sender/subject:** Copy/paste
+## Ticket fields to capture (when escalating)
+- Did you click?: Yes/No
+- Did you enter credentials?: Yes/No
+- Sender/subject: Copy/paste
 
+
+## Escalation logic (for chatbot / help desk)
+- Suspected phishing or credential entry → **S1**
+- Mail send/receive broken across web + desktop → **S2**
+- Single device/app issue with workaround (web works) → **S3**
 
 ## Escalation logic (for chatbot / help desk)
 - Suspected phishing or credential entry → **S1**

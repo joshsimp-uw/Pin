@@ -27,9 +27,11 @@ from app.core.config import settings
 from app.core.db import init_schema
 from app.core.repository import ensure_user
 from app.rag.ingest import ensure_kb_fresh
+from fastapi.security import HTTPBearer
+from fastapi import Depends, Security
+from app.api.deps import require_user_swagger, bearer_scheme
 
-
-app = FastAPI(title=settings.app_name)
+app = FastAPI(title=settings.app_name, dependencies=[Security(bearer_scheme)])
 
 
 def _cors_origins() -> list[str]:

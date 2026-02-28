@@ -27,26 +27,27 @@ Recommended apps: Outlook, Authenticator, OneDrive.
 
 ### Can't add ACME account to Outlook
 
-**Severity:** `S2` — Major degradation; user work significantly impacted. Escalate within same business day.
+## Severity:
+`S2` — Major degradation; user work significantly impacted. Escalate within same business day.
 
-**Symptoms**
+## Symptoms
 - Sign-in fails
 - MFA loop
 - Account won't finish setup
 
-**Quick checks**
+## Quick checks
 - Update Outlook app
 - Try setup on Wi‑Fi and then on cellular if possible
 
-**Fix steps**
+## Fix steps
 1. Update Outlook from the App Store.
 2. Try adding the account again.
 3. If MFA loops, open the Authenticator app and complete the prompt.
 
-**Escalate if**
+## Escalate if
 - You cannot complete setup after multiple tries
 - Account appears blocked
 
-**Ticket fields to capture (when escalating)**
-- **iOS version:** Optional
-- **Exact error:** Copy/paste or screenshot
+## Ticket fields to capture (when escalating)
+- iOS version: Optional
+- Exact error: Copy/paste or screenshot

@@ -27,25 +27,26 @@ SharePoint stores team and department documents. ACME tenant: https://acme.share
 
 ### Access denied to a SharePoint site or folder
 
-**Severity:** `S2` — Major degradation; user work significantly impacted. Escalate within same business day.
+## Severity:
+`S2` — Major degradation; user work significantly impacted. Escalate within same business day.
 
-**Symptoms**
+## Symptoms
 - You see 'Access denied' or cannot open a library
 - You used to have access and lost it
 
-**Quick checks**
+## Quick checks
 - Confirm you are signed in with your @acme.com account
 - Try opening in an InPrivate/Incognito window
 
-**Fix steps**
+## Fix steps
 1. Sign out and sign back in with your ACME account.
 2. Try again in an InPrivate/Incognito window.
 3. If you still cannot access, request access from the site owner (or submit a ticket if you don't know the owner).
 
-**Escalate if**
+## Escalate if
 - You cannot work due to missing access
 - Multiple users report loss of access
 
-**Ticket fields to capture (when escalating)**
-- **Site URL:** Copy/paste
-- **Used to have access:** Yes/No
+## Ticket fields to capture (when escalating)
+- Site URL: Copy/paste
+- Used to have access: Yes/No

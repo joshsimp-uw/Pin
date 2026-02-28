@@ -9,12 +9,13 @@ from fastapi import APIRouter, Body, Header, HTTPException
 from app.api.deps import require_admin_from_auth_header
 from app.core.config import settings
 from app.core.config_store import list_llm_providers, get_setting, set_setting, upsert_llm_provider
-from app.core.repository import ensure_org, ensure_user, list_users
+from app.core.repository import ensure_org, ensure_user, list_users, get_user, update_user, set_user_disabled
 from app.core.auth import set_user_password
 from app.llm.providers import get_llm, LLMError
 from app.llm.embeddings import get_active_rag_backend, set_active_rag_backend
 from app.rag.ingest import ingest_kb_dir, ensure_kb_fresh
 from app.rag.vec_store import connect_vec
+from app.core.db import connect
 
 router = APIRouter(tags=["admin"])
 
@@ -34,7 +35,7 @@ async def admin_kb_reingest(authorization: str | None = Header(default=None)) ->
 def admin_kb_docs(authorization: str | None = Header(default=None)) -> list[dict[str, str]]:
     """List KB documents stored in the DB (admin-only)."""
     u = require_admin_from_auth_header(authorization)
-    conn = connect_vec()
+    conn = connect()
     try:
         rows = conn.execute(
             "SELECT doc_id, category, title, source_path, updated_at FROM kb_documents ORDER BY category, title"
@@ -197,16 +198,94 @@ def admin_users_create(authorization: str | None = Header(default=None), payload
     role = "admin" if is_admin else "end_user"
 
     ensure_org(u.org_id, name=u.org_id)
-    ensure_user(
-        org_id=u.org_id,
-        user_id=email,
-        first_name=first,
-        last_name=last,
-        email=email,
-        role=role,
-    )
+
+    existing = get_user(u.org_id, email)
+    if existing and int(existing.get("is_disabled", 0) or 0) == 1:
+        # User exists but is disabled: admin must explicitly re-enable.
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "user_disabled",
+                "message": "User already exists but is disabled. Re-enable the user or choose a different email.",
+                "user_id": email,
+            },
+        )
+    if existing and int(existing.get("is_disabled", 0) or 0) == 0:
+        raise HTTPException(status_code=409, detail={"code": "user_exists", "message": "User already exists.", "user_id": email})
+
+    ensure_user(org_id=u.org_id, user_id=email, first_name=first, last_name=last, email=email, role=role)
 
     temp_pw = "Pin-" + secrets.token_urlsafe(9)
     set_user_password(user_id=email, password=temp_pw)
 
     return {"status": "ok", "user_id": email, "temp_password": temp_pw}
+
+
+@router.put("/api/admin/users/{user_id}")
+def admin_users_update(user_id: str, authorization: str | None = Header(default=None), payload: dict = Body(...)) -> dict:
+    """Modify a user (admin-only). Email/user_id is immutable."""
+    u = require_admin_from_auth_header(authorization)
+    user_id = str(user_id).strip().lower()
+    first = str(payload.get("first_name") or "").strip() or None
+    last = str(payload.get("last_name") or "").strip() or None
+    is_admin = payload.get("is_admin")
+
+    role = None
+    if is_admin is not None:
+        role = "admin" if bool(is_admin) else "end_user"
+
+    ok = update_user(org_id=u.org_id, user_id=user_id, first_name=first, last_name=last, role=role)
+    if not ok:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"status": "ok"}
+
+
+@router.post("/api/admin/users/{user_id}/disable")
+def admin_users_disable(user_id: str, authorization: str | None = Header(default=None)) -> dict:
+    """Disable a user (soft delete). Historical data is retained."""
+    u = require_admin_from_auth_header(authorization)
+    user_id = str(user_id).strip().lower()
+    ok = set_user_disabled(org_id=u.org_id, user_id=user_id, disabled=True)
+    if not ok:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Revoke any active tokens
+    conn = connect_vec()
+    try:
+        conn.execute("DELETE FROM auth_sessions WHERE user_id=?", (user_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {"status": "ok"}
+
+
+@router.post("/api/admin/users/{user_id}/enable")
+def admin_users_enable(user_id: str, authorization: str | None = Header(default=None), payload: dict = Body(default={})) -> dict:
+    """Re-enable a previously disabled user. Optionally resets password and updates names/role."""
+    u = require_admin_from_auth_header(authorization)
+    user_id = str(user_id).strip().lower()
+
+    first = str(payload.get("first_name") or "").strip() or None
+    last = str(payload.get("last_name") or "").strip() or None
+    is_admin = payload.get("is_admin")
+    reset_password = bool(payload.get("reset_password", True))
+
+    role = None
+    if is_admin is not None:
+        role = "admin" if bool(is_admin) else "end_user"
+
+    ok = set_user_disabled(org_id=u.org_id, user_id=user_id, disabled=False)
+    if not ok:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Update optional fields
+    if first is not None or last is not None or role is not None:
+        update_user(org_id=u.org_id, user_id=user_id, first_name=first, last_name=last, role=role)
+
+    temp_pw = None
+    if reset_password:
+        temp_pw = "Pin-" + secrets.token_urlsafe(9)
+        set_user_password(user_id=user_id, password=temp_pw)
+
+    return {"status": "ok", "user_id": user_id, "temp_password": temp_pw}

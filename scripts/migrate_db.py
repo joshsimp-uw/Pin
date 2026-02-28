@@ -37,6 +37,14 @@ def migrate(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE sessions ADD COLUMN closed_at TEXT")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_ticket ON sessions(ticket_id)")
 
+    # users: soft-disable flags
+    if _table_exists(conn, "users"):
+        if not _has_column(conn, "users", "is_disabled"):
+            conn.execute("ALTER TABLE users ADD COLUMN is_disabled INTEGER NOT NULL DEFAULT 0")
+        if not _has_column(conn, "users", "disabled_at"):
+            conn.execute("ALTER TABLE users ADD COLUMN disabled_at TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_users_disabled ON users(org_id, is_disabled)")
+
     conn.commit()
 
 

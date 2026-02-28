@@ -67,13 +67,20 @@ class AuthUser:
     first_name: str | None
     last_name: str | None
     role: str
+    is_disabled: int = 0
 
 
 def get_user_by_email(*, org_id: str, email: str) -> AuthUser | None:
     conn = connect()
     try:
         row = conn.execute(
-            "SELECT user_id, org_id, email, first_name, last_name, role FROM users WHERE org_id=? AND lower(email)=lower(?)",
+            """
+            SELECT user_id, org_id, email, first_name, last_name, role, is_disabled
+            FROM users
+            WHERE org_id=?
+              AND lower(email)=lower(?)
+              AND COALESCE(is_disabled, 0)=0
+            """,
             (org_id, email),
         ).fetchone()
         if not row:
@@ -85,6 +92,7 @@ def get_user_by_email(*, org_id: str, email: str) -> AuthUser | None:
             first_name=row["first_name"],
             last_name=row["last_name"],
             role=row["role"],
+            is_disabled=int(row["is_disabled"] or 0),
         )
     finally:
         conn.close()
@@ -120,11 +128,12 @@ def get_user_by_token(token: str) -> AuthUser | None:
         # (legacy behavior), otherwise require expires_at > now.
         row = conn.execute(
             """
-            SELECT u.user_id, u.org_id, u.email, u.first_name, u.last_name, u.role,
+            SELECT u.user_id, u.org_id, u.email, u.first_name, u.last_name, u.role, COALESCE(u.is_disabled, 0) AS is_disabled,
                    s.expires_at AS expires_at
             FROM auth_sessions s
             JOIN users u ON u.user_id = s.user_id
             WHERE s.token=?
+              AND COALESCE(u.is_disabled, 0)=0
               AND (s.expires_at IS NULL OR s.expires_at > datetime('now'))
             """,
             (token,),
@@ -143,6 +152,7 @@ def get_user_by_token(token: str) -> AuthUser | None:
             first_name=row["first_name"],
             last_name=row["last_name"],
             role=row["role"],
+            is_disabled=int(row["is_disabled"] or 0),
         )
     finally:
         conn.close()

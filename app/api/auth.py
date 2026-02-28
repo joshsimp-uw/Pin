@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Body, Header, HTTPException
 
 from app.api.deps import bearer_token
-from app.core.auth import get_user_by_email, issue_token, require_user, verify_user_password
+from app.core.auth import get_user_by_email, issue_token, require_user, verify_user_password, set_user_password
 
 router = APIRouter(tags=["auth"])
 
@@ -49,3 +49,20 @@ def auth_me(authorization: str | None = Header(default=None)) -> dict:
             "role": u.role,
         }
     }
+
+
+@router.post("/auth/change_password")
+def auth_change_password(authorization: str | None = Header(default=None), payload: dict = Body(...)) -> dict:
+    """Allow an authenticated user to change their password."""
+    u = require_user(bearer_token(authorization))
+    current_password = str(payload.get("current_password") or "").strip()
+    new_password = str(payload.get("new_password") or "").strip()
+    if not current_password or not new_password:
+        raise HTTPException(status_code=400, detail="current_password and new_password are required")
+    if len(new_password) < 8:
+        raise HTTPException(status_code=400, detail="new_password must be at least 8 characters")
+    if not verify_user_password(user_id=u.user_id, password=current_password):
+        raise HTTPException(status_code=401, detail="Invalid current password")
+
+    set_user_password(user_id=u.user_id, password=new_password)
+    return {"status": "ok"}

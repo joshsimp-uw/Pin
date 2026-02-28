@@ -200,6 +200,69 @@
     await renderKpis();
   };
 
+  const renderProfile = async () => {
+    setActiveNav("profile");
+    uiState.view = "profile";
+    saveUi();
+
+    $("#primaryPanel").innerHTML = `
+      <h2>Profile</h2>
+      <p class="small">Reset your password.</p>
+      <div class="hr"></div>
+
+      <div class="form-grid">
+        <div class="field">
+          <label>Current Password</label>
+          <input id="pwCurrent" type="password" class="input" />
+        </div>
+        <div class="field">
+          <label>New Password</label>
+          <input id="pwNew" type="password" class="input" />
+        </div>
+        <div class="field">
+          <label>Confirm New Password</label>
+          <input id="pwConfirm" type="password" class="input" />
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; align-items:center">
+        <button class="btn" id="pwSaveBtn" type="button">Update password</button>
+        <span id="pwMsg" class="small"></span>
+      </div>
+    `;
+
+    const msg = $("#pwMsg");
+    $("#pwSaveBtn").addEventListener("click", async () => {
+      const current_password = $("#pwCurrent").value;
+      const new_password = $("#pwNew").value;
+      const confirm = $("#pwConfirm").value;
+      msg.textContent = "";
+      if (!current_password || !new_password) {
+        msg.textContent = "Enter your current password and a new password.";
+        return;
+      }
+      if (new_password !== confirm) {
+        msg.textContent = "New password and confirmation do not match.";
+        return;
+      }
+
+      try {
+        await api("/auth/change_password", {
+          method: "POST",
+          body: JSON.stringify({ current_password, new_password }),
+        });
+        $("#pwCurrent").value = "";
+        $("#pwNew").value = "";
+        $("#pwConfirm").value = "";
+        msg.textContent = "Password updated.";
+      } catch (e) {
+        msg.textContent = String(e?.message || e);
+      }
+    });
+
+    await renderKpis();
+  };
+
   const renderChatList = async (status) => {
     setActiveNav(status === "closed" ? "closedChats" : "openChats");
     uiState.view = status === "closed" ? "closedChats" : "openChats";
@@ -493,6 +556,7 @@
     try {
       if (view === "logout") return logout();
       if (view === "home") return renderHome();
+      if (view === "profile") return renderProfile();
       if (view === "newIssue") return createNewChat();
       if (view === "openChats") return renderChatList("open");
       if (view === "closedChats") return renderChatList("closed");

@@ -38,26 +38,27 @@ dns:
 
 ### VPN won't connect
 
-**Severity:** `S2` — Major degradation; user work significantly impacted. Escalate within same business day.
+## Severity:
+`S2` — Major degradation; user work significantly impacted. Escalate within same business day.
 
-**Symptoms**
+## Symptoms
 - Connection fails
 - Timeout errors
 - Stuck at 'Connecting'
 
-**Quick checks**
+## Quick checks
 - Confirm your internet works by opening a few websites
 - Restart your computer
 
-**Fix steps**
+## Fix steps
 1. Confirm you entered **vpn.acme.com** exactly.
 2. Restart your computer.
 3. Try again from a different network if possible (mobile hotspot) to rule out home ISP blocking.
 
-**Escalate if**
+## Escalate if
 - The error repeats after restart
 - You are blocked from all work because VPN is required
 
-**Ticket fields to capture (when escalating)**
-- **Error text:** Copy/paste or screenshot
-- **Network type:** Home Wi‑Fi / hotspot / other
+## Ticket fields to capture (when escalating)
+- Error text: Copy/paste or screenshot
+- Network type: Home Wi‑Fi / hotspot / other

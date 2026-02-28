@@ -55,9 +55,3 @@ This article covers common remote-user issues for ACME-managed Windows devices.
 - Blue screen, boot failure, or data-loss risk → **S1**
 - Core hardware (camera/mic) broken with no workaround → **S2**
 - Performance issues with workaround → **S3**
-
-
-## Escalation logic (for chatbot / help desk)
-- Blue screen, boot failure, or data-loss risk → **S1**
-- Core hardware (camera/mic) broken with no workaround → **S2**
-- Performance issues with workaround → **S3**

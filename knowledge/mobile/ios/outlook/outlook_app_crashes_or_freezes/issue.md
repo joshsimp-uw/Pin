@@ -27,23 +27,24 @@ Recommended apps: Outlook, Authenticator, OneDrive.
 
 ### Outlook app crashes or freezes
 
-**Severity:** `S3` — Minor issue or how-to; workaround exists. Resolve via KB or standard ticket queue.
+## Severity:
+`S3` — Minor issue or how-to; workaround exists. Resolve via KB or standard ticket queue.
 
-**Symptoms**
+## Symptoms
 - App closes unexpectedly
 - Freezes on open
 
-**Quick checks**
+## Quick checks
 - Restart phone
 - Update app
 
-**Fix steps**
+## Fix steps
 1. Restart your iPhone.
 2. Update Outlook.
 3. If still crashing, uninstall and reinstall Outlook.
 
-**Escalate if**
+## Escalate if
 - Crashes persist after reinstall and prevents working
 
-**Ticket fields to capture (when escalating)**
-- **Steps tried:** Restart/update/reinstall
+## Ticket fields to capture (when escalating)
+- Steps tried: Restart/update/reinstall

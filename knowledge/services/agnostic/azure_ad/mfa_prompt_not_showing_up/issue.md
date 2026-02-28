@@ -34,27 +34,28 @@ urls:
 
 ### MFA prompt not showing up
 
-**Severity:** `S2` — Major degradation; user work significantly impacted. Escalate within same business day.
+## Severity:
+`S2` — Major degradation; user work significantly impacted. Escalate within same business day.
 
-**Symptoms**
+## Symptoms
 - No push prompt appears
 - Authenticator shows no request
 - Sign-in hangs waiting for approval
 
-**Quick checks**
+## Quick checks
 - Make sure your phone has internet
 - Open Authenticator app manually
 - Check notifications are enabled for Authenticator
 
-**Fix steps**
+## Fix steps
 1. On your phone, open the Authenticator app and look for a pending request.
 2. If nothing appears, choose 'Sign in another way' and try an alternate method if available.
 3. Restart your phone and try again.
 
-**Escalate if**
+## Escalate if
 - You changed phones and can’t approve MFA
 - You lost access to your MFA device
 
-**Ticket fields to capture (when escalating)**
-- **MFA method:** Authenticator/SMS/etc (if known)
-- **Phone change?:** Yes/No
+## Ticket fields to capture (when escalating)
+- MFA method: Authenticator/SMS/etc (if known)
+- Phone change?: Yes/No

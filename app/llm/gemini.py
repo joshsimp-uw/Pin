@@ -45,6 +45,11 @@ class GeminiLLM(BaseLLM):
             },
         }
 
+        # ADDED: Support for Structured JSON Outputs
+        if response_format is not None:
+            payload["generationConfig"]["responseMimeType"] = "application/json"
+            payload["generationConfig"]["responseSchema"] = response_format
+
         headers = {
             "Content-Type": "application/json",
             "x-goog-api-key": self.api_key,

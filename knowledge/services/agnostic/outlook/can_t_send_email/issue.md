@@ -29,26 +29,27 @@ urls:
 
 ### Can't send email
 
-**Severity:** `S2` — Major degradation; user work significantly impacted. Escalate within same business day.
+## Severity:
+`S2` — Major degradation; user work significantly impacted. Escalate within same business day.
 
-**Symptoms**
+## Symptoms
 - Messages stay in Outbox
 - Send fails with an error
 - Recipients say they never received it
 
-**Quick checks**
+## Quick checks
 - Confirm you're online
 - Try sending from Outlook on the web to isolate the issue
 
-**Fix steps**
+## Fix steps
 1. Restart Outlook.
 2. Try sending the same message from https://outlook.office.com.
 3. If sending works on the web but not desktop, sign out of Outlook desktop and sign back in.
 
-**Escalate if**
+## Escalate if
 - Sending fails on both web and desktop
 - Error mentions account disabled or blocked
 
-**Ticket fields to capture (when escalating)**
-- **Where failing:** Outlook desktop / Web / Both
-- **Error message:** Exact text or screenshot
+## Ticket fields to capture (when escalating)
+- Where failing: Outlook desktop / Web / Both
+- Error message: Exact text or screenshot

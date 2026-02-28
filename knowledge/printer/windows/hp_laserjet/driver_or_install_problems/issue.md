@@ -25,30 +25,31 @@ ACME remote users connect printers directly via **USB**.
 
 ### Driver or install problems
 
-**Severity:** `S2` — Major degradation; user work significantly impacted. Escalate within same business day.
+## Severity:
+`S2` — Major degradation; user work significantly impacted. Escalate within same business day.
 
-**Symptoms**
+## Symptoms
 - Printer cannot be added
 - Driver install errors
 - Device not recognized
 
-**Quick checks**
+## Quick checks
 - Try a different USB cable/port if available
 - Confirm you have permission to install software (company device)
 
-**Fix steps**
+## Fix steps
 1. Disconnect the printer USB cable.
 2. Reboot the computer.
 3. Reconnect the printer and follow Windows prompts.
 4. If it still fails, contact IT with the exact error.
 
-**Escalate if**
+## Escalate if
 - Install requires admin rights you don't have
 - Repeated install failures
 
-**Ticket fields to capture (when escalating)**
-- **Exact error:** Copy/paste or screenshot
-- **Is this a company device?:** Yes/No
+## Ticket fields to capture (when escalating)
+- Exact error: Copy/paste or screenshot
+- Is this a company device?: Yes/No
 
 
 ## Escalation logic (for chatbot / help desk)

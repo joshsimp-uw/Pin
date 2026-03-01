@@ -70,31 +70,44 @@ async def _llm_field_extract(message: str, required_fields: list[str], org_id: s
         return {} # Fallback to empty if LLM fails
 
 
-# Change definition to async and pass org_id
 async def _merge_collected(state: SessionState, req: ChatRequest, org_id: str) -> None:
-    # 1) Parse explicit kv fields first
+    # Helper to check if a value is effectively "missing"
+    def is_empty(v):
+        if v is None: return True
+        if isinstance(v, str):
+            sv = v.strip().lower()
+            return sv == "" or sv == "null" or sv == "unknown"
+        return False
+
+    # 1) Parse explicit kv fields first (e.g., connection_type: USB)
     kv = _extract_kv(req.message)
     for k, v in kv.items():
-        if k not in state.collected:
+        # Allow overwriting if the current value is empty/null
+        if k not in state.collected or is_empty(state.collected.get(k)):
             state.collected[k] = v
 
-    # 2) LLM guesses for missing required fields
+    # 2) Identify fields that are missing or currently "null"
     flow = registry.get(state.category)
     required = list(getattr(flow, "required_fields", []) or [])
-    missing = [f for f in required if f not in state.collected]
+    
+    # NEW LOGIC: If a field is "null", it counts as missing for the LLM extraction
+    missing = [f for f in required if is_empty(state.collected.get(f))]
     
     if missing:
         guessed = await _llm_field_extract(req.message, required_fields=missing, org_id=org_id)
         for k, v in guessed.items():
-            if k not in state.collected and v is not None and str(v).strip() != "":
-                state.collected[k] = v
+            # Only save the guess if it's not empty AND we don't have a better value yet
+            if not is_empty(v):
+                if k not in state.collected or is_empty(state.collected.get(k)):
+                    state.collected[k] = v
 
-    # 3) Accept explicit context from client as collected
+    # 3) Accept explicit context from client
     if req.context:
         for k, v in req.context.items():
             kk = str(k).strip().lower()
-            if kk in missing and v is not None:
-                state.collected.setdefault(kk, v)
+            if kk in required and not is_empty(v):
+                if is_empty(state.collected.get(kk)):
+                    state.collected[kk] = v
 
 
 def _render_ticket(t: Ticket) -> str:

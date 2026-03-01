@@ -75,8 +75,13 @@ registry = FlowRegistry(settings.flow_config_path)
 def next_missing_field(flow: Flow, collected: dict[str, Any]) -> str | None:
     for f in flow.required_fields:
         v = collected.get(f)
-        if v is None or (isinstance(v, str) and not v.strip()):
+        # Check for None, empty strings, or string placeholders like "null"/"unknown"
+        if v is None:
             return f
+        if isinstance(v, str):
+            val = v.strip().lower()
+            if val == "" or val == "null" or val == "unknown":
+                return f
     return None
 
 

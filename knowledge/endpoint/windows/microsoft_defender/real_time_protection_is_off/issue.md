@@ -1,5 +1,5 @@
 ---
-doc_id: KB-982E4A9480-blocked_we
+doc_id: KB-982E4A9480-real_time
 title: "Endpoint Security \u2014 Microsoft Endpoint Protection \u2014 Blocked website\
   \ or download"
 service: Microsoft Endpoint Protection

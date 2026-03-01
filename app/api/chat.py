@@ -185,7 +185,7 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
 
     flow = registry.get(state.category)
 
-    # 1. NEW: Call the async merge function using the LLM
+    # 1. INTENT EXTRACTION: Call the async merge function using the LLM
     await _merge_collected(state, req, u.org_id)
 
     insert_message(session_id=state.session_id, role="user", content=req.message)
@@ -199,6 +199,7 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
             except Exception:
                 pass
 
+    # 2. PENDING ACTIONS: Handle confirmations (Close Chat / Escalate)
     pending = (state.collected or {}).get("_pending_action")
     if pending:
         msg = req.message.strip().lower()
@@ -242,6 +243,7 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
             save_session(state)
             return ActionResponse(message=prompt, actions=[Action(action_id="yes", label="Yes"), Action(action_id="no", label="No")], meta={"pending": pending.get("type")})
 
+    # 3. AUTO-CLOSE: Check for resolution keywords
     msg_l = req.message.strip().lower()
     if any(k in msg_l for k in ["resolved", "fixed", "that worked", "solved", "thank you", "thanks", "thx"]):
         prompt = "Glad to hear it. Would you like to close this chat?"
@@ -250,6 +252,7 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
         save_session(state)
         return ActionResponse(message=prompt, actions=[Action(action_id="yes", label="Close chat"), Action(action_id="no", label="Keep open")], meta={"pending": "close_chat"})
 
+    # 4. THE GATEKEEPER: Check for missing fields BEFORE RAG retrieval
     missing = next_missing_field(flow, state.collected)
     if missing:
         q = question_for(flow, missing)
@@ -262,7 +265,7 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
             collected=state.collected,
         )
 
-    # 2. IMPROVE RETRIEVAL: LLM Query Rewriting
+    # 5. RETRIEVAL: Only proceed to search if all fields are valid
     llm = get_llm(org_id=u.org_id)
     rewrite_prompt = (
         "Rewrite the following IT support issue and gathered context into a concise, keyword-rich semantic search query. "
@@ -274,12 +277,11 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
     try:
         query = await llm.chat([{"role": "user", "content": rewrite_prompt}])
     except Exception:
-        # Fallback if the LLM fails
         query = req.message + "\n" + "\n".join([f"{k}: {v}" for k, v in sorted(state.collected.items())])
 
     citations, best_score = await retrieve(query, org_id=u.org_id)
 
-    # 3. Softened escalation: Escalate based on retrieval score and turns, not hardcoded paths
+    # 6. ESCALATION: Confidence check
     esc, esc_reason = should_escalate(state.turns, best_score)
     if esc:
         ticket = Ticket(
@@ -314,19 +316,20 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
             meta={"pending": "escalate_to_ticket"},
         )
 
+    # 7. RESPONSE GENERATION: Final troubleshooting synthesis
     system = (
         "You are a Tier 0/Tier 1 IT support technician for a single company. "
         "Stay in scope. Use ONLY the provided KB excerpts as your source of truth. "
-        "If the KB does not contain a safe/clear procedure, say you will escalate. "
-        "Ask concise follow-up questions only if absolutely required. "
-        "Never ask for passwords or secrets."
+        "Format your response using Markdown (bolding, numbered lists). "
+        "Do not include source numbers like (SOURCE 1) in your text response. "
+        "If the KB does not contain a clear procedure, offer to escalate."
     )
 
     kb_block = "\n\n".join([f"SOURCE {i+1}: {c.title}\n{c.snippet}" for i, c in enumerate(citations)])
-    user = (
+    user_prompt = (
         f"User issue:\n{req.message}\n\n"
         f"Collected context:\n" + "\n".join([f"- {k}: {v}" for k, v in sorted(state.collected.items())]) + "\n\n"
-        f"KB excerpts (use these, cite by SOURCE #):\n{kb_block}\n\n"
+        f"KB excerpts:\n{kb_block}\n\n"
         "Respond with: (1) a short diagnosis, (2) numbered steps, (3) what to report back."
     )
 
@@ -334,12 +337,13 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
         content = await llm.chat(
             [
                 {"role": "system", "content": system},
-                {"role": "user", "content": user},
+                {"role": "user", "content": user_prompt},
             ]
         )
     except LLMError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
+    # 8. GUARDRAILS: Check output safety
     gr = check_response(content)
     if not gr.ok:
         ticket = Ticket(
@@ -353,10 +357,7 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
             escalation_reason=f"Guardrail blocked response: {gr.reason}",
             citations=citations,
         )
-        prompt = (
-            "I can’t answer that safely under our guardrails. "
-            "Would you like to escalate this chat to a ticket for a technician to review?"
-        )
+        prompt = "I can’t answer that safely under our guardrails. Would you like to escalate this to a ticket?"
         state.collected["_pending_action"] = {
             "type": "escalate_to_ticket",
             "prompt": prompt,

@@ -26,26 +26,27 @@ Common setups: Outlook app, Authenticator app, OneDrive app.
 
 ### Email not syncing in Outlook app
 
-**Severity:** `S2` — Major degradation; user work significantly impacted. Escalate within same business day.
+## Severity:
+`S2` — Major degradation; user work significantly impacted. Escalate within same business day.
 
-**Symptoms**
+## Symptoms
 - New mail not arriving
 - Sync errors
 - App stuck loading
 
-**Quick checks**
+## Quick checks
 - Confirm phone has internet
 - Update Outlook app
 
-**Fix steps**
+## Fix steps
 1. Force close Outlook and reopen it.
 2. Update Outlook from the app store.
 3. Remove the ACME account from Outlook and add it again if sync remains broken.
 
-**Escalate if**
+## Escalate if
 - You cannot add the account back
 - MFA cannot be completed
 
-**Ticket fields to capture (when escalating)**
-- **Phone model:** Optional
-- **Android version:** Optional
+## Ticket fields to capture (when escalating)
+- Phone model: Optional
+- Android version: Optional

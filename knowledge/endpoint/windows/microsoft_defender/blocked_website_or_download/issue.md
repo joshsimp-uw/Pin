@@ -24,28 +24,29 @@ Protection runs automatically on ACME devices. Do not disable security features.
 
 ### Blocked website or download
 
-**Severity:** `S3` — Minor issue or how-to; workaround exists. Resolve via KB or standard ticket queue.
+## Severity:
+`S3` — Minor issue or how-to; workaround exists. Resolve via KB or standard ticket queue.
 
-**Symptoms**
+## Symptoms
 - Website blocked
 - Download prevented
 - Message says content is unsafe
 
-**Quick checks**
+## Quick checks
 - Confirm the site is required for work
 - Try a different official source if available
 
-**Fix steps**
+## Fix steps
 1. If the site/download is work-related, capture the URL and the block message.
 2. Submit a request to IT for review.
 
-**Escalate if**
+## Escalate if
 - You believe your account/device is compromised
 - You cannot perform your job due to required site block
 
-**Ticket fields to capture (when escalating)**
-- **Blocked URL:** Copy/paste
-- **Business justification:** What task requires it
+## Ticket fields to capture (when escalating)
+- Blocked URL: Copy/paste
+- Business justification: What task requires it
 
 
 ## Escalation logic (for chatbot / help desk)

@@ -31,26 +31,27 @@ urls:
 
 ### Can't log in to Salesforce
 
-**Severity:** `S2` — Major degradation; user work significantly impacted. Escalate within same business day.
+## Severity:
+`S2` — Major degradation; user work significantly impacted. Escalate within same business day.
 
-**Symptoms**
+## Symptoms
 - Login fails
 - Looping sign-in page
 - MFA issues (if enabled)
 
-**Quick checks**
+## Quick checks
 - Confirm you can sign in to Microsoft 365 at https://portal.office.com
 - Try a private/incognito browser window
 
-**Fix steps**
+## Fix steps
 1. Try signing in using a private/incognito window.
 2. Clear browser cache for Salesforce and try again.
 3. If your password recently changed, retry after a few minutes.
 
-**Escalate if**
+## Escalate if
 - All logins fail and you cannot work
 - Account appears disabled
 
-**Ticket fields to capture (when escalating)**
-- **Browser:** Chrome/Edge/Safari/etc
-- **Exact error:** Copy/paste or screenshot
+## Ticket fields to capture (when escalating)
+- Browser: Chrome/Edge/Safari/etc
+- Exact error: Copy/paste or screenshot

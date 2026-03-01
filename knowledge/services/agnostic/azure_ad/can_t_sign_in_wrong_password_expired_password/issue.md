@@ -34,29 +34,30 @@ urls:
 
 ### Can't sign in (wrong password / expired password)
 
-**Severity:** `S2` — Major degradation; user work significantly impacted. Escalate within same business day.
+## Severity:
+`S2` — Major degradation; user work significantly impacted. Escalate within same business day.
 
-**Symptoms**
+## Symptoms
 - Sign-in fails on Microsoft login page
 - Password prompts repeat
 - Message mentions password is incorrect/expired
 
-**Quick checks**
+## Quick checks
 - Confirm you are signing in with your ACME email address
 - Make sure Caps Lock is off
 - Try signing in at https://portal.office.com
 
-**Fix steps**
+## Fix steps
 1. Try again carefully (type password manually).
 2. If you recently changed your password, wait 5 minutes and try again.
 3. Restart your device, then try again.
 4. If you still can’t sign in, request a password reset from IT.
 
-**Escalate if**
+## Escalate if
 - You are locked out and cannot self-recover
 - You suspect someone else has your password
 
-**Ticket fields to capture (when escalating)**
-- **User impact:** Cannot access Microsoft 365 or related services
-- **When it started:** Approx time/date
-- **Any error text:** Copy/paste or screenshot
+## Ticket fields to capture (when escalating)
+- User impact: Cannot access Microsoft 365 or related services
+- When it started: Approx time/date
+- Any error text: Copy/paste or screenshot

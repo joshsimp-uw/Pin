@@ -38,25 +38,26 @@ dns:
 
 ### Login rejected / authentication failed
 
-**Severity:** `S2` — Major degradation; user work significantly impacted. Escalate within same business day.
+## Severity:
+`S2` — Major degradation; user work significantly impacted. Escalate within same business day.
 
-**Symptoms**
+## Symptoms
 - Username/password rejected
 - MFA prompt never appears
 - Account disabled messages
 
-**Quick checks**
+## Quick checks
 - Confirm you can sign in to https://portal.office.com (checks your account)
 - Check Caps Lock
 
-**Fix steps**
+## Fix steps
 1. Try signing in to https://portal.office.com. If that fails, fix your account sign-in first.
 2. If portal sign-in works, try VPN again and approve MFA promptly.
 
-**Escalate if**
+## Escalate if
 - You cannot sign in to portal.office.com
 - Account disabled or suspicious activity suspected
 
-**Ticket fields to capture (when escalating)**
-- **Can sign in to portal.office.com:** Yes/No
-- **Any error code:** As shown
+## Ticket fields to capture (when escalating)
+- Can sign in to portal.office.com: Yes/No
+- Any error code: As shown

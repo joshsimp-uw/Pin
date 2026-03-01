@@ -26,25 +26,26 @@ Use OneDrive for your personal work files. Access via https://portal.office.com 
 
 ### Can't find a file
 
-**Severity:** `S3` — Minor issue or how-to; workaround exists. Resolve via KB or standard ticket queue.
+## Severity:
+`S3` — Minor issue or how-to; workaround exists. Resolve via KB or standard ticket queue.
 
-**Symptoms**
+## Symptoms
 - File missing from folder
 - You think you deleted it
 
-**Quick checks**
+## Quick checks
 - Use search in OneDrive
 - Check Recycle Bin
 
-**Fix steps**
+## Fix steps
 1. Search OneDrive for the filename.
 2. Check OneDrive Recycle Bin and restore if found.
 3. Check 'Version history' if you need an older copy.
 
-**Escalate if**
+## Escalate if
 - File not in Recycle Bin and business-critical
 - Large set of files missing
 
-**Ticket fields to capture (when escalating)**
-- **File name:** Exact name if possible
-- **Approx date last seen:** Date/time
+## Ticket fields to capture (when escalating)
+- File name: Exact name if possible
+- Approx date last seen: Date/time

@@ -31,26 +31,27 @@ urls:
 
 ### Pages are slow or not loading
 
-**Severity:** `S3` — Minor issue or how-to; workaround exists. Resolve via KB or standard ticket queue.
+## Severity:
+`S3` — Minor issue or how-to; workaround exists. Resolve via KB or standard ticket queue.
 
-**Symptoms**
+## Symptoms
 - Salesforce pages take a long time
 - Spinning loader
 - Some pages never load
 
-**Quick checks**
+## Quick checks
 - Check your internet speed/connection stability
 - Try a different browser
 
-**Fix steps**
+## Fix steps
 1. Refresh the page.
 2. Try a different browser.
 3. Disable browser extensions for the session if possible.
 
-**Escalate if**
+## Escalate if
 - Multiple users report outage
 - Salesforce is unusable for business-critical tasks
 
-**Ticket fields to capture (when escalating)**
-- **Time observed:** Approx time/date
-- **Is it only you?:** Yes/No
+## Ticket fields to capture (when escalating)
+- Time observed: Approx time/date
+- Is it only you?: Yes/No

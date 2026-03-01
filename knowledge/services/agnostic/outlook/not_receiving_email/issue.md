@@ -30,26 +30,27 @@ urls:
 
 ### Not receiving email
 
-**Severity:** `S2` — Major degradation; user work significantly impacted. Escalate within same business day.
+## Severity:
+`S2` — Major degradation; user work significantly impacted. Escalate within same business day.
 
-**Symptoms**
+## Symptoms
 - Expected messages never arrive
 - Only some senders affected
 
-**Quick checks**
+## Quick checks
 - Check Junk Email folder
 - Check Focused/Other tabs
 - Search for the sender or subject
 
-**Fix steps**
+## Fix steps
 1. Check Junk Email and move any legitimate messages to Inbox.
 2. Search your mailbox for the sender or subject keywords.
 3. Ask the sender to confirm the address is correct.
 
-**Escalate if**
+## Escalate if
 - Multiple external senders report bounces
 - Mailbox appears full and you can’t delete items
 
-**Ticket fields to capture (when escalating)**
-- **Sender address:** Who is sending
-- **Approx time:** When you expected the email
+## Ticket fields to capture (when escalating)
+- Sender address: Who is sending
+- Approx time: When you expected the email

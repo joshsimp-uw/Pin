@@ -26,27 +26,28 @@ Use OneDrive for your personal work files. Access via https://portal.office.com 
 
 ### OneDrive not syncing
 
-**Severity:** `S2` — Major degradation; user work significantly impacted. Escalate within same business day.
+## Severity:
+`S2` — Major degradation; user work significantly impacted. Escalate within same business day.
 
-**Symptoms**
+## Symptoms
 - Sync icon shows errors
 - Files don't appear on other devices
 - Status stuck on 'Processing changes'
 
-**Quick checks**
+## Quick checks
 - Confirm internet connection
 - Confirm you are signed in to OneDrive
 
-**Fix steps**
+## Fix steps
 1. Click the OneDrive cloud icon and review any error message.
 2. Pause syncing for 1 minute, then resume.
 3. Restart OneDrive from the icon menu.
 4. Restart your computer if the issue persists.
 
-**Escalate if**
+## Escalate if
 - Errors persist after restart
 - Work files missing across devices
 
-**Ticket fields to capture (when escalating)**
-- **Error message:** As shown in OneDrive
-- **File path:** Folder/file affected
+## Ticket fields to capture (when escalating)
+- Error message: As shown in OneDrive
+- File path: Folder/file affected

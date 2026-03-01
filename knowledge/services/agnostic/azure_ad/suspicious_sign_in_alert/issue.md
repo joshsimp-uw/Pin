@@ -34,32 +34,33 @@ urls:
 
 ### Suspicious sign-in alert
 
-**Severity:** `S1` — Service down or security risk; user blocked and/or potential compromise. Immediate escalation.
+## Severity:
+`S1` — Service down or security risk; user blocked and/or potential compromise. Immediate escalation.
 
-**Symptoms**
+## Symptoms
 - You received a sign-in alert you did not initiate
 - Unexpected MFA prompts
 - Microsoft reports unusual activity
 
-**Quick checks**
+## Quick checks
 - Do not approve unexpected MFA prompts
 - Change your password immediately if you can
 
-**Fix steps**
+## Fix steps
 1. If you can sign in: change your password immediately.
 2. Do not approve any MFA prompts you did not start.
 3. Report the alert to IT right away.
 
-**Escalate if**
+## Escalate if
 - Any sign-in you did not initiate
 - Repeated unexpected MFA prompts
 
-**Ticket fields to capture (when escalating)**
-- **Alert details:** Time/location/device shown in alert
-- **Did you approve?:** Yes/No
+## Ticket fields to capture (when escalating)
+- Alert details: Time/location/device shown in alert
+- Did you approve?: Yes/No
 
 
 ## Escalation logic (for chatbot / help desk)
-- If the user **cannot sign in at all** → start as **S2**.
-- If there is **suspected compromise** or **unexpected MFA prompts** → **S1** immediately.
-- If user has a workaround (already signed in elsewhere) → **S3** and guide cleanup.
+- If the user cannot sign in at all → start as S2.
+- If there is suspected compromise or unexpected MFA prompts → S1 immediately.
+- If user has a workaround (already signed in elsewhere) → S3 and guide cleanup.

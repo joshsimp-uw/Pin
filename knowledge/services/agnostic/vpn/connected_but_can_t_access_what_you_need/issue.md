@@ -38,29 +38,30 @@ dns:
 
 ### Connected but can't access what you need
 
-**Severity:** `S3` — Minor issue or how-to; workaround exists. Resolve via KB or standard ticket queue.
+## Severity:
+`S3` — Minor issue or how-to; workaround exists. Resolve via KB or standard ticket queue.
 
-**Symptoms**
+## Symptoms
 - VPN shows connected
 - Internal site/app still fails
 - Only one app affected
 
-**Quick checks**
+## Quick checks
 - Disconnect and reconnect VPN
 - Confirm the resource actually requires VPN
 
-**Fix steps**
+## Fix steps
 1. Disconnect VPN and reconnect.
 2. Try the resource again.
 3. If only one internal app is failing, report it with the name/URL of the app.
 
-**Escalate if**
+## Escalate if
 - Multiple internal resources fail while connected
 - VPN disconnects repeatedly
 
-**Ticket fields to capture (when escalating)**
-- **Resource name/URL:** What you are trying to reach
-- **Does VPN stay connected?:** Yes/No
+## Ticket fields to capture (when escalating)
+- Resource name/URL: What you are trying to reach
+- Does VPN stay connected?: Yes/No
 
 
 ## Escalation logic (for chatbot / help desk)

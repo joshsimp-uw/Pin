@@ -26,27 +26,28 @@ Use OneDrive for your personal work files. Access via https://portal.office.com 
 
 ### Sharing link not working
 
-**Severity:** `S3` — Minor issue or how-to; workaround exists. Resolve via KB or standard ticket queue.
+## Severity:
+`S3` — Minor issue or how-to; workaround exists. Resolve via KB or standard ticket queue.
 
-**Symptoms**
+## Symptoms
 - Recipient can't open link
 - Permission denied
 
-**Quick checks**
+## Quick checks
 - Confirm the recipient email is correct
 - Try generating a new link
 
-**Fix steps**
+## Fix steps
 1. Create a new share link and ensure it is set to the correct permission (View/Edit).
 2. If sharing to an external recipient is required, follow company policy and request IT approval if needed.
 
-**Escalate if**
+## Escalate if
 - Sharing is business-critical and blocked
 - You need external sharing and it fails consistently
 
-**Ticket fields to capture (when escalating)**
-- **Recipient:** Internal or external
-- **Permission needed:** View/Edit
+## Ticket fields to capture (when escalating)
+- Recipient: Internal or external
+- Permission needed: View/Edit
 
 
 ## Escalation logic (for chatbot / help desk)

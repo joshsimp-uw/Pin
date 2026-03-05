@@ -1,9 +1,7 @@
-from __future__ import annotations
-
 import re
+import json
 from pathlib import Path
 from typing import Any
-
 
 def _slug(s: str) -> str:
     s = (s or "").strip().lower()
@@ -12,86 +10,75 @@ def _slug(s: str) -> str:
     s = re.sub(r"[^a-z0-9_\-]", "", s)
     return s
 
-
-def support_matrix(kb_dir: Path) -> dict[str, dict[str, list[str]]]:
-    """Return {device_type: {os: [applications...]}} based on directory structure."""
-    out: dict[str, dict[str, list[str]]] = {}
+def get_supported_topics(kb_dir: Path) -> set[str]:
+    """Scan KB for specific issue folders (leaf nodes) containing issue.md."""
+    topics = set()
     if not kb_dir.exists():
-        return out
-    for device in sorted([p for p in kb_dir.iterdir() if p.is_dir()]):
-        if device.name.startswith((".", "_")):
-            continue
-        dkey = _slug(device.name)
-        out[dkey] = {}
-        for os_dir in sorted([p for p in device.iterdir() if p.is_dir()]):
-            if os_dir.name.startswith((".", "_")):
-                continue
-            okey = _slug(os_dir.name)
-            apps: list[str] = []
-            for app_dir in sorted([p for p in os_dir.iterdir() if p.is_dir()]):
-                if app_dir.name.startswith((".", "_")):
-                    continue
-                apps.append(_slug(app_dir.name))
-            out[dkey][okey] = apps
-    return out
+        return topics
+    # Only include folders that actually have documentation
+    for p in kb_dir.rglob("issue.md"):
+        topics.add(_slug(p.parent.name))
+    return topics
 
+async def _guess_topic_with_llm(message: str, kb_dir: Path, org_id: str) -> str | None:
+    from app.llm.providers import get_llm
+    import json
 
-def _guess_application(message: str, category: str) -> str | None:
-    t = (message or "").lower()
-    # Prefer an explicit app hint if present.
-    for k, app in [
-        ("outlook", "outlook"),
-        ("office", "office"),
-        ("word", "office"),
-        ("excel", "office"),
-        ("powerpoint", "office"),
-        ("teams", "teams"),
-        ("vpn", "vpn"),
-        ("wifi", "wifi"),
-        ("wi-fi", "wifi"),
-        ("printer", "printers"),
-        ("printing", "printers"),
-    ]:
-        if k in t:
-            return app
-    # Fall back to the classifier category (email, remote_access, printers, ...)
-    return _slug(category) if category else None
+    topics = list(get_supported_topics(kb_dir))
+    if not topics:
+        return None
 
+    schema = {
+        "type": "OBJECT",
+        "properties": {
+            "matched_folder": {"type": "STRING"}
+        },
+        "required": ["matched_folder"]
+    }
 
-def is_supported_request(
+    prompt = (
+        f"You are an IT Support Router. User message: '{message}'\n"
+        f"Available Support Folders: {', '.join(topics)}\n\n"
+        "STRICT RULE: If the user's specific application (e.g., Google Docs) "
+        "is NOT in the list above, you MUST return 'unknown'. "
+        "Do not attempt to find a 'close' match or a generic category."
+    )
+
+    llm = get_llm(org_id=org_id)
+    try:
+        res = await llm.chat([{"role": "user", "content": prompt}], response_format=schema)
+        # Clean the output to ensure case-insensitive matching
+        guess = json.loads(res).get("matched_folder", "").strip().lower()
+        
+        # FUZZY CHECK: If Gemini used dashes instead of underscores, fix it
+        guess = guess.replace("-", "_")
+        
+        return guess if guess in topics else None
+    except Exception as e:
+        print(f"DEBUG: Mapping failed with error: {e}")
+        return None
+
+async def is_supported_request(
     *,
     message: str,
     category: str,
     collected: dict[str, Any],
     kb_dir: Path,
+    org_id: str
 ) -> tuple[bool, str | None]:
-    """Return (supported, reason).
+    
+    # 1. Combine previous answers with the current message
+    # If collected has {"error_message": "driver problems"} and message is "USB",
+    # full_query becomes: "driver problems Windows HP LaserJet USB"
+    context_values = [str(v) for v in collected.values()] if collected else []
+    full_query = " ".join(context_values + [message])
 
-    We treat the KB folder list as the authoritative support matrix:
-      knowledge/<device type>/<operating system>/<application>/<issue.md>
-
-    If the user asks about something not present in the directory tree, we
-    escalate as "unsupported".
-    """
-
-    matrix = support_matrix(kb_dir)
-    if not matrix:
-        # If KB isn't present, don't block; normal RAG confidence escalation will handle it.
+    # 2. Pass the enriched query to Gemini instead of just the 1-word answer
+    requested_topic = await _guess_topic_with_llm(full_query, kb_dir, org_id)
+    
+    supported_topics = get_supported_topics(kb_dir)
+    if requested_topic and requested_topic in supported_topics:
         return True, None
-
-    device = _slug(str(collected.get("device_type") or ""))
-    os_name = _slug(str(collected.get("os") or ""))
-    app = _slug(str(collected.get("application") or "") or (_guess_application(message, category) or ""))
-
-    # Only enforce checks when we have a signal. We don't want to falsely block
-    # early turns before the flow collects required fields.
-    if device and device not in matrix:
-        return False, f"Unsupported device type '{device}'."
-    if device and os_name and os_name not in matrix.get(device, {}):
-        return False, f"Unsupported OS '{os_name}' for device type '{device}'."
-    if device and os_name and app:
-        apps = set(matrix.get(device, {}).get(os_name, []))
-        if apps and app not in apps:
-            return False, f"Unsupported application '{app}' for '{device}/{os_name}'."
-
-    return True, None
+    
+    display_topic = requested_topic if requested_topic and requested_topic != "unknown" else "this issue"
+    return False, display_topic

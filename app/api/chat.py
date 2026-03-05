@@ -212,7 +212,7 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
             except Exception:
                 pass
 
-    # 2. PENDING ACTIONS: Handle confirmations (Close Chat / Escalate)
+        # 2. PENDING ACTIONS: Handle confirmations (Close Chat / Escalate)
     pending = (state.collected or {}).get("_pending_action")
     if pending:
         msg = req.message.strip().lower()
@@ -247,6 +247,13 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
                 state.ticket_id = ticket_id
                 state.collected.pop("_pending_action", None)
                 save_session(state)
+
+                return AnswerResponse(
+                    message=f"Success! I've created ticket #{ticket_id} for you. Is there anything else I can help with today?", 
+                    citations=[], 
+                    collected=state.collected
+                )
+            
         if no:
             state.collected.pop("_pending_action", None)
             save_session(state)
@@ -255,7 +262,7 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
             insert_message(session_id=state.session_id, role="assistant", content=prompt)
             save_session(state)
             return ActionResponse(message=prompt, actions=[Action(action_id="yes", label="Yes"), Action(action_id="no", label="No")], meta={"pending": pending.get("type")})
-
+        
     # 3. AUTO-CLOSE: Check for resolution keywords
     msg_l = req.message.strip().lower()
     if any(k in msg_l for k in ["resolved", "fixed", "that worked", "solved", "thank you", "thanks", "thx"]):
@@ -278,6 +285,35 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
             collected=state.collected,
         )
 
+# 4.5 SUPPORT MATRIX CHECK: Now uses the LLM-driven async check
+    supported, unsupp_reason = await is_supported_request(
+        message=req.message,
+        category=state.category,
+        collected=state.collected,
+        kb_dir=Path(settings.kb_dir),
+        org_id=u.org_id  # Pass the org_id so get_llm works
+    )
+    
+    if not supported:
+        # 1. Define the hard rejection message
+        prompt = f"Sorry, this organization does not support that ({unsupp_reason}). Please try again with a supported topic."
+        
+        # 2. Wipe the memory so the bot forgets about the unsupported app
+        # This ensures their next message starts fresh.
+        state.category = None
+        state.collected.clear()
+        
+        # 3. Save the rejection to the chat history
+        insert_message(session_id=state.session_id, role="assistant", content=prompt)
+        save_session(state)
+        
+        # 4. Return an AnswerResponse (No buttons, no tickets)
+        return AnswerResponse(
+            message=prompt,
+            citations=[],
+            collected=state.collected
+        )
+    
     # 5. RETRIEVAL: Only proceed to search if all fields are valid
     llm = get_llm(org_id=u.org_id)
     rewrite_prompt = (
@@ -335,7 +371,12 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
         "Stay in scope. Use ONLY the provided KB excerpts as your source of truth. "
         "Format your response using Markdown (bolding, numbered lists). "
         "Do not include source numbers like (SOURCE 1) in your text response. "
+        "You MUST cite your sources, but do so sparingly. Cite each document used exactly ONE time. Even if you use multiple excerpts from the exact same document, do not repeat the citation. Place your citation at the very end of the troubleshooting section, rather than after every paragraph or step. "
+        "The document titles provided to you contain multiple parts separated by dashes. "
+        "When formatting your citation, you MUST extract the core issue name and append the word 'Policy' to the end of it. Ignore the broad categories at the beginning and the final section heading at the end. "
+        "For example, if the provided title is 'Printers — HP LaserJet — Driver or install problems — Severity', your citation must be exactly: (Driver or install problems Policy). "
         "If the KB does not contain a clear procedure, offer to escalate."
+        "IMPORTANT: Only use the escalation token if the user's CURRENT situation matches the escalation criteria (e.g., under 'Escalate if'), or if there is no procedure for their OS/device. Do not use the token to explain future hypothetical steps. When escalating, briefly explain why, and append the exact phrase ACTION_ESCALATE on a new line at the very end of your response."
     )
 
     kb_block = "\n\n".join([f"SOURCE {i+1}: {c.title}\n{c.snippet}" for i, c in enumerate(citations)])
@@ -356,9 +397,13 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
     except LLMError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    # 8. GUARDRAILS: Check output safety
-    gr = check_response(content)
-    if not gr.ok:
+    # 7.5 POST-GENERATION INTERCEPT: Catch explicit LLM-driven escalations
+    # Notice we are checking for the exact uppercase string now, not just "escalat"
+    if "ACTION_ESCALATE" in content:
+        
+        # Optional: Clean the ugly trigger word out of the text so the user doesn't see it
+        clean_content = content.replace("ACTION_ESCALATE", "").strip()
+        
         ticket = Ticket(
             summary=state.collected.get("summary") or req.message.strip()[:120],
             category=state.category or "unknown",
@@ -367,21 +412,50 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
             diagnostics=state.collected,
             steps_attempted=state.steps_attempted,
             error_text=str(state.collected.get("error_message") or "") or None,
-            escalation_reason=f"Guardrail blocked response: {gr.reason}",
+            escalation_reason="LLM determined escalation was necessary based on KB rules.",
             citations=citations,
         )
-        prompt = "I can’t answer that safely under our guardrails. Would you like to escalate this to a ticket?"
+        
+        # We append the LLM's explanation (clean_content) to the prompt
+        prompt = f"{clean_content}\n\nWould you like me to create a ticket for you?"
+        
         state.collected["_pending_action"] = {
             "type": "escalate_to_ticket",
             "prompt": prompt,
             "draft": ticket.model_dump(),
         }
+        
         insert_message(session_id=state.session_id, role="assistant", content=prompt)
         save_session(state)
+        
         return ActionResponse(
             message=prompt,
-            actions=[Action(action_id="escalate", label="Escalate to ticket"), Action(action_id="no", label="Keep chatting")],
+            actions=[
+                Action(action_id="escalate", label="Escalate to ticket"), 
+                Action(action_id="no", label="Keep chatting")
+            ],
             meta={"pending": "escalate_to_ticket"},
+        )
+
+    # 8. GUARDRAILS: Check output safety
+    gr = check_response(content)
+    if not gr.ok:
+        # 1. Define the hard rejection message using the guardrail reason
+        prompt = f"I cannot fulfill this request as it violates our support guidelines ({gr.reason})."
+        
+        # 2. Wipe the memory so the bot forgets the malicious/forbidden context
+        state.category = None
+        state.collected.clear()
+        
+        # 3. Save the rejection to the chat history
+        insert_message(session_id=state.session_id, role="assistant", content=prompt)
+        save_session(state)
+        
+        # 4. Return an AnswerResponse (No buttons, no tickets)
+        return AnswerResponse(
+            message=prompt,
+            citations=[],
+            collected=state.collected
         )
 
     insert_message(

@@ -41,13 +41,61 @@ categories:
       other_devices: "Do other devices on the same Wi-Fi work (yes/no/unsure)?"
       error_message: "Any specific message (e.g., 'No Internet', 'Connected without Internet')?"
     max_steps: 6
+  printer:
+    description: "Printer connectivity or driver issues"
+    required_fields:
+      - os
+      - printer_model
+      - connection_type
+      - error_message
+    questions:
+      os: "What OS are you printing from (Windows/macOS)?"
+      printer_model: "What is the model of the printer (e.g., HP LaserJet, Canon)? "
+      connection_type: "How is it connected (Wi-Fi, USB, Network cable)?"
+      error_message: "Are there any error messages on your screen or the printer's display?"
+    max_steps: 6
+  hardware:
+    description: "Physical hardware issues for endpoints and mobile"
+    required_fields:
+      - device_type
+      - os
+      - symptom
+    questions:
+      device_type: "What type of device is this (Laptop, Desktop, iPhone, Android)?"
+      os: "What OS does it run?"
+      symptom: "What physical issue are you experiencing (e.g., won't turn on, battery draining, screen broken)?"
+    max_steps: 6
+  identity_access:
+    description: "Authentication, Azure AD, and Duo Security issues"
+    required_fields:
+      - service
+      - symptom
+      - os
+    questions:
+      service: "What are you trying to log into (e.g., my computer/Windows, company email/apps, or Duo)?"
+      symptom: "What exactly is happening (e.g., password not working, account locked, no Duo prompt)?"
+      os: "What OS are you using right now?"
+    max_steps: 6
+  saas_collab:
+    description: "Issues with OneDrive, SharePoint, Zoom, or Salesforce"
+    required_fields:
+      - application
+      - symptom
+      - error_message
+    questions:
+      application: "Which app are you having trouble with (Zoom, OneDrive, SharePoint, Salesforce)?"
+      symptom: "Can you describe what is failing (e.g., won't sync, meeting link broken, access denied)?"
+      error_message: "Are you seeing a specific error message or code?"
+    max_steps: 6
 fallback:
   description: "General support"
   required_fields:
+    - application
     - summary
     - device_type
     - os
   questions:
+    application: "What specific application, service, or hardware are you having trouble with? (If none, say 'general')"
     summary: "Give me a one-sentence summary of the issue."
     device_type: "What device is this on (laptop/desktop/phone) and is it company-managed?"
     os: "What OS are you on?"

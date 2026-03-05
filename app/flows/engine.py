@@ -57,12 +57,25 @@ class FlowRegistry:
         enough for Tier 0/1 routing.
         """
         m = message.lower()
+        
+        # Existing flows
         if any(k in m for k in ["vpn", "pulse", "anyconnect", "tunnel"]):
             return "vpn"
         if any(k in m for k in ["outlook", "email", "mailbox", "owa", "exchange"]):
             return "email"
-        if any(k in m for k in ["wifi", "wi-fi", "wireless", "ssid"]):
+        if any(k in m for k in ["wifi", "wi-fi", "wireless", "ssid", "internet"]):
             return "wifi"
+            
+        # New flows mapped to KB folders
+        if any(k in m for k in ["print", "printer", "laserjet", "ink", "paper", "spooler"]):
+            return "printer"
+        if any(k in m for k in ["azure", "duo", "password", "locked", "mfa", "authenticator", "login", "sign in"]):
+            return "identity_access"
+        if any(k in m for k in ["zoom", "onedrive", "sharepoint", "salesforce", "sync", "meeting"]):
+            return "saas_collab"
+        if any(k in m for k in ["screen", "battery", "keyboard", "mouse", "power", "boot", "turn on", "hardware"]):
+            return "hardware"
+            
         return "fallback"
 
     def get(self, key: str) -> Flow:

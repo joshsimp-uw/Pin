@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     rag_top_k: int = 5
     # For sqlite-vec cosine distance, lower is better; we convert to a
     # similarity-like score via (1 - distance).
-    rag_min_score: float = 0.12
+    rag_min_score: float = 0.30
     # NOTE: We support switching between a local/offline embedding backend and
     # Gemini embeddings. Each backend has its own sqlite-vec table with its own
     # embedding dimension.

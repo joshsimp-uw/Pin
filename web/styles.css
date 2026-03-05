@@ -386,4 +386,8 @@ footer{
   word-break: break-word;  /* prevents overflow */
   line-height: 1.35;
 }
-
+/* Markdown formatting overrides */
+.markdown-body p { margin: 0 0 8px 0; }
+.markdown-body p:last-child { margin: 0; }
+.markdown-body ul, .markdown-body ol { margin: 6px 0; padding-left: 24px; }
+.markdown-body li { margin-bottom: 4px; }

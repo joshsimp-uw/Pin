@@ -392,10 +392,18 @@
       const name = isUser ? "You" : "Pin";
       const el = document.createElement("div");
       el.className = `msg ${cls}`;
+      
+      // Use escapeHtml for users, and marked.parse for the LLM
+      const contentHtml = isUser 
+        ? `<div class="msg-text">${escapeHtml(text)}</div>` 
+        : `<div class="msg-text markdown-body">${marked.parse(text)}</div>`;
+
       el.innerHTML = `
-        <div><strong>${escapeHtml(name)}</strong>: ${escapeHtml(text)}</div>
+        <div><strong>${escapeHtml(name)}</strong></div>
+        ${contentHtml}
         <div class="meta">${escapeHtml(fmtDate(ts || new Date().toISOString()))}</div>
       `;
+      
       log.appendChild(el);
       log.scrollTop = log.scrollHeight;
     };

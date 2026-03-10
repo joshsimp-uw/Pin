@@ -1,6 +1,21 @@
 (() => {
   const $ = (id) => document.getElementById(id);
 
+  const bindEnterToButton = (container, buttonSelector) => {
+    if (!container) return;
+
+    container.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+
+      const tag = (e.target?.tagName || "").toLowerCase();
+      if (tag === "textarea") return;
+
+      e.preventDefault();
+      const btn = container.querySelector(buttonSelector);
+      if (btn && !btn.disabled) btn.click();
+    });
+  };
+
   const now = new Date();
   $("year").textContent = String(now.getFullYear());
   $("buildDate").textContent = now.toISOString();
@@ -68,4 +83,6 @@
       }
     })();
   });
+
+  bindEnterToButton(document, "#loginBtn");
 })();

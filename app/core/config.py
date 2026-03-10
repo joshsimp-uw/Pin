@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-1.5-flash"
     gemini_embed_model: str = "gemini-embedding-001"
-    llm_timeout_s: float = 30.0
+    llm_timeout_s: float = 60.0
 
     # Admin
     admin_token: str | None = None

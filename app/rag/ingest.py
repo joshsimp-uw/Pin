@@ -317,6 +317,26 @@ def _upsert_documents_and_chunks(conn, docs: list[tuple[DocMeta, list[tuple[str,
     return chunk_payloads
 
 
+def _delete_stale_documents(conn, docs: list[tuple[DocMeta, list[tuple[str, str]]]]) -> None:
+    current_doc_ids = {meta.doc_id for meta, _ in docs}
+    existing_rows = conn.execute("SELECT doc_id FROM kb_documents").fetchall()
+    stale_doc_ids = [str(r[0]) for r in existing_rows if str(r[0]) not in current_doc_ids]
+    if not stale_doc_ids:
+        return
+
+    table_names = {"kb_vec_local", "kb_vec_gemini"}
+    available_tables = {str(r[0]) for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+
+    for doc_id in stale_doc_ids:
+        chunk_rows = conn.execute("SELECT chunk_id FROM kb_chunks WHERE doc_id=?", (doc_id,)).fetchall()
+        chunk_ids = [str(r[0]) for r in chunk_rows]
+        for table in table_names & available_tables:
+            for chunk_id in chunk_ids:
+                conn.execute(f"DELETE FROM {table} WHERE chunk_id=?", (chunk_id,))
+        conn.execute("DELETE FROM kb_chunks WHERE doc_id=?", (doc_id,))
+        conn.execute("DELETE FROM kb_documents WHERE doc_id=?", (doc_id,))
+
+
 async def ingest_kb_dir(kb_dir: Path, *, org_id: str = "ACME") -> dict[str, int]:
     files_all = sorted(list(kb_dir.glob("**/*.md")) + list(kb_dir.glob("**/*.yaml")) + list(kb_dir.glob("**/*.yml")))
     files = [fp for fp in files_all if _kb_file_is_supported(fp, kb_dir=kb_dir)]
@@ -328,6 +348,7 @@ async def ingest_kb_dir(kb_dir: Path, *, org_id: str = "ACME") -> dict[str, int]
     try:
         ensure_vec_schema(conn, backend=backend)
         conn.execute("BEGIN")
+        _delete_stale_documents(conn, docs)
         chunk_payloads = _upsert_documents_and_chunks(conn, docs)
         conn.commit()
 

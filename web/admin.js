@@ -19,6 +19,21 @@
     "'": "&#39;",
   })[c]);
 
+  const bindEnterToButton = (container, buttonSelector) => {
+    if (!container) return;
+
+    container.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+
+      const tag = (e.target?.tagName || "").toLowerCase();
+      if (tag === "textarea") return;
+
+      e.preventDefault();
+      const btn = container.querySelector(buttonSelector);
+      if (btn && !btn.disabled) btn.click();
+    });
+  };
+
   const now = new Date();
   $("#year").textContent = String(now.getFullYear());
   $("#buildDate").textContent = now.toISOString();
@@ -130,6 +145,7 @@
     $("#openaiModel").value = getModel("openai", "gpt-4o-mini");
     $("#geminiModel").value = getModel("gemini", "gemini-1.5-flash");
     $("#mockModel").value = getModel("mock", "mock");
+    bindEnterToButton(panel, "#saveLLM");
 
     $("#saveLLM").addEventListener("click", async () => {
       const ap = $("#activeProvider").value;
@@ -193,6 +209,7 @@
       sel.querySelector('option[value="gemini"]').disabled = true;
       if (sel.value === "gemini") sel.value = "local";
     }
+    bindEnterToButton(panel, "#saveRAG");
 
     $("#saveRAG").addEventListener("click", async () => {
       const backend = sel.value;
@@ -293,6 +310,7 @@
 
     const msg = $("#createUserMsg");
     const reenableBox = $("#reenableBox");
+    bindEnterToButton(panel, "#createUserBtn");
 
     $("#createUserBtn").addEventListener("click", async () => {
       const first_name = $("#uFirst").value.trim();
@@ -428,6 +446,7 @@
     sel.addEventListener("change", () => loadUser(sel.value));
 
     const msg = $("#modifyMsg");
+    bindEnterToButton(panel, "#saveUserBtn");
 
     $("#saveUserBtn").addEventListener("click", async () => {
       const user_id = sel.value;

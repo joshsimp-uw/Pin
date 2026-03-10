@@ -17,6 +17,21 @@
     "'": "&#39;",
   })[c]);
 
+  const bindEnterToButton = (container, buttonSelector) => {
+    if (!container) return;
+
+    container.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+
+      const tag = (e.target?.tagName || "").toLowerCase();
+      if (tag === "textarea") return;
+
+      e.preventDefault();
+      const btn = container.querySelector(buttonSelector);
+      if (btn && !btn.disabled) btn.click();
+    });
+  };
+
   const api = async (path, opts = {}) => {
     const r = await fetch(`${BACKEND_BASE}${path}`,
       {
@@ -232,6 +247,8 @@
     `;
 
     const msg = $("#pwMsg");
+    bindEnterToButton($("#primaryPanel"), "#pwSaveBtn");
+
     $("#pwSaveBtn").addEventListener("click", async () => {
       const current_password = $("#pwCurrent").value;
       const new_password = $("#pwNew").value;
@@ -469,13 +486,48 @@
       log.scrollTop = log.scrollHeight;
     };
 
+    const removeTypingIndicator = () => {
+      const existing = document.getElementById("typingIndicator");
+      if (existing) existing.remove();
+    };
+
+    const showTypingIndicator = () => {
+      removeTypingIndicator();
+
+      const el = document.createElement("div");
+      el.className = "msg bot typing";
+      el.id = "typingIndicator";
+      el.innerHTML = `
+        <div><strong>Pin</strong></div>
+        <div class="typing-bubble" aria-live="polite" aria-label="Pin is responding">
+          <span></span><span></span><span></span>
+        </div>
+        <div class="meta">Waiting for response...</div>
+      `;
+
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+    };
+
+    const sendBtn = $("#sendBtn");
+    const chatText = $("#chatText");
+
+    const setChatBusy = (busy) => {
+      if (chatText) chatText.disabled = busy || chat.status !== "open";
+      if (sendBtn) sendBtn.disabled = busy || chat.status !== "open";
+    };
+
     const sendAndRender = async (text) => {
       const msg = String(text || "").trim();
       if (!msg) return;
       appendMsg("user", msg, new Date().toISOString());
+      showTypingIndicator();
+      setChatBusy(true);
 
       try {
         const data = await sendChatMessage({ message: msg, session_id: sessionId, context: {} });
+
+        removeTypingIndicator();
 
         if (data.type === "answer") {
           appendMsg("assistant", data.message || "", new Date().toISOString());
@@ -490,17 +542,31 @@
 
         await renderKpis();
       } catch (e) {
+        removeTypingIndicator();
         appendMsg("assistant", String(e?.message || e), new Date().toISOString());
+      } finally {
+        setChatBusy(false);
+        if (chatText && !chatText.disabled) chatText.focus();
       }
     };
 
-    const sendBtn = $("#sendBtn");
-    const chatText = $("#chatText");
+    const submitChat = async () => {
+      const t = chatText.value;
+      if (!String(t || "").trim()) return;
+      chatText.value = "";
+      await sendAndRender(t);
+    };
+
     if (sendBtn && chatText) {
-      sendBtn.addEventListener("click", () => {
-        const t = chatText.value;
-        chatText.value = "";
-        sendAndRender(t);
+      sendBtn.addEventListener("click", submitChat);
+
+      chatText.addEventListener("keydown", async (e) => {
+        if (e.key !== "Enter" || e.isComposing) return;
+
+        if (e.shiftKey) return;
+
+        e.preventDefault();
+        await submitChat();
       });
     }
 

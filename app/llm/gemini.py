@@ -56,8 +56,13 @@ class GeminiLLM(BaseLLM):
         }
 
         timeout = httpx.Timeout(settings.llm_timeout_s)
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            r = await client.post(url, headers=headers, json=payload)
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                r = await client.post(url, headers=headers, json=payload)
+        except httpx.TimeoutException as e:
+            raise LLMError(f"Gemini request timed out after {settings.llm_timeout_s:.0f}s (model={self.model})") from e
+        except httpx.HTTPError as e:
+            raise LLMError(f"Gemini request failed: {e} (model={self.model})") from e
 
         if r.status_code >= 400:
             # Common failure modes:
@@ -90,15 +95,20 @@ async def embed_texts(texts: list[str]) -> list[list[float]]:
 
     timeout = httpx.Timeout(settings.llm_timeout_s)
     out: list[list[float]] = []
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        for t in texts:
-            payload = {"content": {"parts": [{"text": t}]}}
-            r = await client.post(url, json=payload)
-            if r.status_code >= 400:
-                raise LLMError(f"Gemini embed failed: {r.status_code} {r.text[:500]}")
-            data = r.json()
-            try:
-                out.append(list(data["embedding"]["values"]))
-            except Exception as e:
-                raise LLMError(f"Unexpected Gemini embed response: {json.dumps(data)[:800]}") from e
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            for t in texts:
+                payload = {"content": {"parts": [{"text": t}]}}
+                r = await client.post(url, json=payload)
+                if r.status_code >= 400:
+                    raise LLMError(f"Gemini embed failed: {r.status_code} {r.text[:500]}")
+                data = r.json()
+                try:
+                    out.append(list(data["embedding"]["values"]))
+                except Exception as e:
+                    raise LLMError(f"Unexpected Gemini embed response: {json.dumps(data)[:800]}") from e
+    except httpx.TimeoutException as e:
+        raise LLMError(f"Gemini embedding request timed out after {settings.llm_timeout_s:.0f}s (model={settings.gemini_embed_model})") from e
+    except httpx.HTTPError as e:
+        raise LLMError(f"Gemini embedding request failed: {e} (model={settings.gemini_embed_model})") from e
     return out

@@ -51,8 +51,13 @@ class OpenAICompatibleLLM(BaseLLM):
             payload["response_format"] = response_format
 
         timeout = httpx.Timeout(settings.llm_timeout_s)
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            r = await client.post(url, headers=headers, json=payload)
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                r = await client.post(url, headers=headers, json=payload)
+        except httpx.TimeoutException as e:
+            raise LLMError(f"LLM request timed out after {settings.llm_timeout_s:.0f}s") from e
+        except httpx.HTTPError as e:
+            raise LLMError(f"LLM request failed: {e}") from e
 
         if r.status_code >= 400:
             raise LLMError(f"LLM call failed: {r.status_code} {r.text[:500]}")

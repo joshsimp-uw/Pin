@@ -58,24 +58,43 @@ class FlowRegistry:
         """
         m = message.lower()
         
-        # Existing flows
-        if any(k in m for k in ["vpn", "pulse", "anyconnect", "tunnel"]):
-            return "vpn"
-        if any(k in m for k in ["outlook", "email", "mailbox", "owa", "exchange"]):
-            return "email"
-        if any(k in m for k in ["wifi", "wi-fi", "wireless", "ssid", "internet"]):
-            return "wifi"
+        # 1. Identity & Access (Duo MFA)
+        if any(k in m for k in ["duo", "mfa", "authenticator", "push", "token", "two factor", "2fa"]):
+            return "duo_authentication"
             
-        # New flows mapped to KB folders
-        if any(k in m for k in ["print", "printer", "laserjet", "ink", "paper", "spooler"]):
-            return "printer"
-        if any(k in m for k in ["azure", "duo", "password", "locked", "mfa", "authenticator", "login", "sign in"]):
-            return "identity_access"
-        if any(k in m for k in ["zoom", "onedrive", "sharepoint", "salesforce", "sync", "meeting"]):
-            return "saas_collab"
-        if any(k in m for k in ["screen", "battery", "keyboard", "mouse", "power", "boot", "turn on", "hardware"]):
-            return "hardware"
+        # 2. Network & Connectivity (Cisco VPN)
+        if any(k in m for k in ["vpn", "cisco", "anyconnect", "pulse", "tunnel"]):
+            return "vpn_connectivity"
             
+        # 3. Mobile Endpoints (iOS/iPadOS)
+        if any(k in m for k in ["ios", "ipad", "iphone", "mobile", "smartphone", "apple"]):
+            return "mobile_endpoints"
+            
+        # 4. Windows Endpoints (PC/Laptop/Desktop)
+        if any(k in m for k in ["windows", "pc", "laptop", "desktop", "blue screen", "boot", "surface"]):
+            return "windows_endpoints"
+            
+        # 5. Printers & Hardware
+        if any(k in m for k in ["print", "printer", "laserjet", "ink", "paper", "spooler", "toner"]):
+            return "printers"
+            
+        # 6. SaaS & Collaboration - Zoom
+        if any(k in m for k in ["zoom", "meeting", "webcam", "screen share", "screenshare", "waiting room"]):
+            return "zoom_meetings"
+            
+        # 7. SaaS & Collaboration - SharePoint & OneDrive
+        if any(k in m for k in ["sharepoint", "onedrive", "sync", "check out", "checkout", "site owner"]):
+            return "sharepoint_onedrive"
+            
+        # 8. SaaS & Collaboration - Salesforce CRM
+        if any(k in m for k in ["salesforce", "crm", "sfdc", "lead", "dashboard", "opportunity"]):
+            return "salesforce_crm"
+            
+        # 9. Messaging - Outlook & Exchange
+        if any(k in m for k in ["outlook", "email", "mailbox", "owa", "exchange", "bounce"]):
+            return "messaging"
+            
+        # 10. Fallback
         return "fallback"
 
     def get(self, key: str) -> Flow:

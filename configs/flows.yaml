@@ -1,102 +1,147 @@
 version: 1
 categories:
-  vpn:
-    description: "VPN connectivity or login issues"
+  windows_endpoints:
+    description: "Windows laptop and desktop hardware or OS-level issues"
     required_fields:
-      - os
+      - summary
       - device_type
-      - network_type
-      - error_message
-      - mfa_working
-    questions:
-      os: "What OS are you on (Windows/macOS/Linux/iOS/Android) and version if known?"
-      device_type: "What device are you using (laptop, desktop, phone) and is it company-managed?"
-      network_type: "Are you on home Wi-Fi, mobile hotspot, or on-site network?"
-      error_message: "What is the exact VPN error message/code? Copy/paste if possible."
-      mfa_working: "Is MFA working for other sign-ins today (yes/no/unsure)?"
-    max_steps: 6
-  email:
-    description: "Email access or delivery issues"
-    required_fields:
-      - os
-      - client
+      - os_version
       - symptom
-      - scope
     questions:
-      os: "What OS are you on (Windows/macOS/Linux/iOS/Android)?"
-      client: "Which email client are you using (Outlook, OWA/webmail, Apple Mail, mobile app)?"
-      symptom: "What exactly is happening (can't sign in, missing mail, bounce, delayed delivery, etc.)?"
-      scope: "Is it just you or multiple users? If unsure, say 'unsure'."
+      summary: "Please provide a brief, one-sentence summary of the issue you are experiencing."
+      device_type: "Is this a company-issued Windows laptop or desktop?"
+      os_version: "Do you know if you are running Windows 10 or Windows 11?"
     max_steps: 6
-  wifi:
-    description: "Wi-Fi connectivity issues"
+
+  mobile_endpoints:
+    description: "iOS and iPadOS hardware or system issues"
     required_fields:
-      - device_type
-      - location
-      - other_devices
+      - summary
+      - device_model
+      - os_version
+      - symptom
+    questions:
+      summary: "Please provide a brief summary of the issue you are having with your mobile device."
+      device_model: "What type of mobile device is this (e.g., iPhone 15, iPad Pro) and is it company-issued?"
+      os_version: "What version of iOS or iPadOS is it currently running?"
+    max_steps: 6
+
+  vpn_connectivity:
+    description: "Cisco VPN connection and network access issues"
+    required_fields:
+      - summary
+      - os
+      - network_type
+      - symptom
       - error_message
     questions:
-      device_type: "What device is affected (laptop/phone) and is it company-managed?"
-      location: "Where are you when this happens (home, office, campus, other)?"
-      other_devices: "Do other devices on the same Wi-Fi work (yes/no/unsure)?"
-      error_message: "Any specific message (e.g., 'No Internet', 'Connected without Internet')?"
+      summary: "Please provide a brief summary of the VPN or connectivity issue."
+      os: "What operating system are you connecting from (e.g., Windows 11, macOS)?"
+      network_type: "Are you connecting from home Wi-Fi, a public hotspot, or a wired connection?"
+      symptom: "What exactly happens when you try to connect to the Cisco VPN?"
+      error_message: "Are you receiving a specific VPN error code or timeout message?"
     max_steps: 6
-  printer:
-    description: "Printer connectivity or driver issues"
+
+  duo_authentication:
+    description: "Duo MFA access, push notifications, and lockouts"
     required_fields:
+      - summary
+      - service
+      - symptom
+      - device_status
+    questions:
+      summary: "Please provide a brief summary of the authentication issue."
+      service: "What application or service are you trying to log into when prompted for Duo?"
+      symptom: "What is the exact issue (e.g., not receiving the push notification, account locked, new phone)?"
+      device_status: "Do you have your registered Duo mobile device with you and connected to the internet?"
+    max_steps: 6
+
+  printers:
+    description: "Printer hardware, software, or driver issues"
+    required_fields:
+      - summary
       - os
       - printer_model
       - connection_type
       - error_message
     questions:
-      os: "What OS are you printing from (Windows/macOS)?"
-      printer_model: "What is the model of the printer (e.g., HP LaserJet, Canon)? "
-      connection_type: "How is it connected (Wi-Fi, USB, Network cable)?"
-      error_message: "Are there any error messages on your screen or the printer's display?"
+      summary: "Please provide a brief summary of the printing issue."
+      os: "What OS are you printing from?"
+      printer_model: "What is the specific make and model of the printer (e.g., HP LaserJet Pro)?"
+      connection_type: "How is the printer connected (Wi-Fi, USB, Network cable)?"
+      error_message: "Are there any exact error codes or messages on your screen or the printer display?"
     max_steps: 6
-  hardware:
-    description: "Physical hardware issues for endpoints and mobile"
+
+  sharepoint_onedrive:
+    description: "SharePoint and OneDrive access, file sync, recovery, and sharing permissions"
     required_fields:
-      - device_type
-      - os
-      - symptom
-    questions:
-      device_type: "What type of device is this (Laptop, Desktop, iPhone, Android)?"
-      os: "What OS does it run?"
-      symptom: "What physical issue are you experiencing (e.g., won't turn on, battery draining, screen broken)?"
-    max_steps: 6
-  identity_access:
-    description: "Authentication, Azure AD, and Duo Security issues"
-    required_fields:
-      - service
-      - symptom
-      - os
-    questions:
-      service: "What are you trying to log into (e.g., my computer/Windows, company email/apps, or Duo)?"
-      symptom: "What exactly is happening (e.g., password not working, account locked, no Duo prompt)?"
-      os: "What OS are you using right now?"
-    max_steps: 6
-  saas_collab:
-    description: "Issues with OneDrive, SharePoint, Zoom, or Salesforce"
-    required_fields:
+      - summary
+      - site_role
       - application
       - symptom
       - error_message
     questions:
-      application: "Which app are you having trouble with (Zoom, OneDrive, SharePoint, Salesforce)?"
-      symptom: "Can you describe what is failing (e.g., won't sync, meeting link broken, access denied)?"
-      error_message: "Are you seeing a specific error message or code?"
+      summary: "Please provide a brief summary of the SharePoint or OneDrive issue."
+      site_role: "To help determine permissions, are you a Site Owner, Member, Visitor, or External Guest?"
+      application: "Is this issue specifically occurring in OneDrive or SharePoint?"
+      symptom: "Describe the issue (e.g., missing sync button, deleted file, check-out missing, search delay)."
+      error_message: "Are you seeing any access denied messages or red error banners?"
     max_steps: 6
+
+  messaging:
+    description: "Outlook email access, messaging delivery, and mailbox recovery"
+    required_fields:
+      - summary
+      - os
+      - client
+      - symptom
+      - scope
+    questions:
+      summary: "Please provide a brief summary of the email or messaging issue."
+      os: "What operating system are you on?"
+      client: "Which email client are you using (Outlook Desktop, Webmail/OWA, or a mobile app)?"
+      symptom: "What is the exact email issue (e.g., bounce back, delayed delivery, missing folder)?"
+      scope: "Is this happening only to you, or are colleagues experiencing it too?"
+    max_steps: 6
+
+  salesforce_crm:
+    description: "Salesforce CRM operations, data access, and security policies"
+    required_fields:
+      - summary
+      - user_role
+      - symptom
+      - error_message
+    questions:
+      summary: "Please provide a brief summary of the issue you are having in Salesforce."
+      user_role: "What is your role or profile level in Salesforce (e.g., Sales Rep, Manager, Admin)?"
+      error_message: "Please provide any exact error messages or record ID numbers if applicable."
+    max_steps: 6
+
+  zoom_meetings:
+    description: "Zoom A/V, camera stability, recording, privacy, and sharing permissions"
+    required_fields:
+      - summary
+      - os
+      - network_type
+      - account_type
+      - meeting_role
+      - symptom
+    questions:
+      summary: "Please provide a brief summary of the Zoom issue."
+      os: "What OS are you using for Zoom?"
+      network_type: "Are you connected via Wi-Fi or wired Ethernet?"
+      account_type: "Are you logged in with a corporate SSO Licensed account or a free Basic/Guest account?"
+      meeting_role: "Are you the Host, Co-host, or a Participant in this meeting?"
+    max_steps: 6
+
 fallback:
-  description: "General support"
+  description: "General support for items not matching specific application flows"
   required_fields:
-    - application
     - summary
-    - device_type
+    - application
     - os
   questions:
-    application: "What specific application, service, or hardware are you having trouble with? (If none, say 'general')"
-    summary: "Give me a one-sentence summary of the issue."
-    device_type: "What device is this on (laptop/desktop/phone) and is it company-managed?"
-    os: "What OS are you on?"
+    summary: "Please provide a brief, one-sentence summary of the issue."
+    application: "What specific application, hardware, or service are you having trouble with? (If none, say 'general')"
+    os: "What operating system or device are you using?"
   max_steps: 6

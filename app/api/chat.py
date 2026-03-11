@@ -191,12 +191,55 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
         raise HTTPException(status_code=403, detail="Session does not belong to the current user")
     if state.status != "open":
         raise HTTPException(status_code=400, detail="Chat is closed. Start a new chat to continue.")
+
+    # 0. GREETING INTERCEPT: Prevent simple greetings from starting a flow
+    # Strip punctuation to catch "Hello!" or "hi."
+    import re
+    msg_clean = re.sub(r'[^a-z\s]', '', req.message.lower()).strip()
+    greetings = {"hi", "hello", "hey", "greetings", "good morning", "good afternoon", "good evening", "sup"}
+    
+    if not state.category and msg_clean in greetings:
+        prompt = "Hello! I'm your IT support assistant. How can I help you today?"
+        
+        # Save the interaction to the database history
+        insert_message(session_id=state.session_id, role="user", content=req.message)
+        insert_message(session_id=state.session_id, role="assistant", content=prompt)
+        
+        # Save the session without incrementing turns or setting a category
+        save_session(state)
+        
+        return AnswerResponse(
+            message=prompt,
+            citations=[],
+            collected=state.collected
+        )
+
+    # Existing code continues here:
     state.turns += 1
 
     if not state.category:
         state.category = registry.classify(req.message)
 
     flow = registry.get(state.category)
+
+    # 0.5 INPUT GUARDRAILS: Check user message for banned phrases immediately
+    input_gr = check_response(req.message)
+    if not input_gr.ok:
+        prompt = input_gr.reason  # Outputs: "That is an unsafe request, please try again."
+        
+        # Wipe memory
+        state.category = None
+        state.collected.clear()
+        
+        insert_message(session_id=state.session_id, role="user", content=req.message)
+        insert_message(session_id=state.session_id, role="assistant", content=prompt)
+        save_session(state)
+        
+        return AnswerResponse(
+            message=prompt,
+            citations=[],
+            collected=state.collected
+        )
 
     # 1. INTENT EXTRACTION: Call the async merge function using the LLM
     await _merge_collected(state, req, u.org_id)
@@ -265,12 +308,53 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
         
     # 3. AUTO-CLOSE: Check for resolution keywords
     msg_l = req.message.strip().lower()
-    if any(k in msg_l for k in ["resolved", "fixed", "that worked", "solved", "thank you", "thanks", "thx"]):
+    if any(k in msg_l for k in ["that resolved it", "issue resolved", "matter resolved", "problem solved", "thank you", "thanks", "problem resolved", "error resolved", "problem corrected", "problem has been fixed", "problem fixed", "that fixed it"]):
         prompt = "Glad to hear it. Would you like to close this chat?"
         state.collected["_pending_action"] = {"type": "close_chat", "prompt": prompt}
         insert_message(session_id=state.session_id, role="assistant", content=prompt)
         save_session(state)
         return ActionResponse(message=prompt, actions=[Action(action_id="yes", label="Close chat"), Action(action_id="no", label="Keep open")], meta={"pending": "close_chat"})
+
+
+    # 3.5 AUTO-ESCALATE: Check for failure/unresolved keywords after steps were provided
+    # We check if state.turns > 1 to ensure the bot has actually provided steps first.
+    if state.turns > 1 and any(k in msg_l for k in ["didn't work", "did not work", "still not working", "no luck", "failed", "didn't help", "did not help", "still broken", "same error"]):
+        ticket = Ticket(
+            summary=state.collected.get("summary") or state.title or req.message.strip()[:120],
+            category=state.category or "unknown",
+            user={
+                "org_id": u.org_id,
+                "user_id": u.user_id,
+                **{k: v for k, v in req.context.items() if k.startswith("user_")},
+            },
+            device={k: v for k, v in req.context.items() if k.startswith("device_")},
+            diagnostics=state.collected,
+            steps_attempted=state.steps_attempted,
+            error_text=str(state.collected.get("error_message") or "") or None,
+            escalation_reason="User reported that the provided troubleshooting steps did not resolve the issue.",
+            citations=[],
+        )
+        
+        prompt = "It sounds like those steps didn't resolve the issue. Would you like me to escalate this chat to a ticket for the helpdesk?"
+        
+        state.collected["_pending_action"] = {
+            "type": "escalate_to_ticket",
+            "prompt": prompt,
+            "draft": ticket.model_dump(),
+        }
+        
+        insert_message(session_id=state.session_id, role="assistant", content=prompt)
+        save_session(state)
+        
+        return ActionResponse(
+            message=prompt, 
+            actions=[
+                Action(action_id="yes", label="Yes, create ticket"), 
+                Action(action_id="no", label="No, I'll keep trying")
+            ], 
+            meta={"pending": "escalate_to_ticket"}
+        )
+
 
     # 4. THE GATEKEEPER: Check for missing fields BEFORE RAG retrieval
     missing = next_missing_field(flow, state.collected)
@@ -376,7 +460,10 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
         "When formatting your citation, you MUST extract the core issue name and append the word 'Policy' to the end of it. Ignore the broad categories at the beginning and the final section heading at the end. "
         "For example, if the provided title is 'Printers — HP LaserJet — Driver or install problems — Severity', your citation must be exactly: (Driver or install problems Policy). "
         "If the KB does not contain a clear procedure, offer to escalate."
-        "IMPORTANT: Only use the escalation token if the user's CURRENT situation matches the escalation criteria (e.g., under 'Escalate if'), or if there is no procedure for their OS/device. Do not use the token to explain future hypothetical steps. When escalating, briefly explain why, and append the exact phrase ACTION_ESCALATE on a new line at the very end of your response."
+        "ESCALATION RULES: "
+        "1. If you are providing ANY troubleshooting steps for the user to try, you MUST NOT escalate. "
+        "2. ONLY output the exact token ACTION_ESCALATE on a new line at the very end of your response if the user has ALREADY tried all available steps, OR if their specific symptoms perfectly match the 'Escalate if' criteria in the KB. "
+        "3. Never output the token for a hypothetical future situation."
     )
 
     kb_block = "\n\n".join([f"SOURCE {i+1}: {c.title}\n{c.snippet}" for i, c in enumerate(citations)])
@@ -437,11 +524,11 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
             meta={"pending": "escalate_to_ticket"},
         )
 
-    # 8. GUARDRAILS: Check output safety
+    # 8. GUARDRAILS: Check output safety (Active at all turns)
     gr = check_response(content)
     if not gr.ok:
-        # 1. Define the hard rejection message using the guardrail reason
-        prompt = f"I cannot fulfill this request as it violates our support guidelines ({gr.reason})."
+        # 1. Use the exact custom message returned by the guardrail
+        prompt = gr.reason
         
         # 2. Wipe the memory so the bot forgets the malicious/forbidden context
         state.category = None

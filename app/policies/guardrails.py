@@ -23,10 +23,13 @@ BANNED_PHRASES = [
 
 
 def check_response(text: str) -> GuardrailResult:
+    # Universally check for banned phrases at every turn
     t = text.lower()
     for p in BANNED_PHRASES:
         if p in t:
-            return GuardrailResult(False, f"Banned phrase detected: {p}")
+            # Return the exact custom rejection message
+            return GuardrailResult(False, "That is an unsafe request, please try again.")
+            
     if len(text) > 5000:
         return GuardrailResult(False, "Response too long")
     return GuardrailResult(True)

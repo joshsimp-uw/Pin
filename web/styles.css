@@ -431,3 +431,88 @@ footer{
     opacity:1;
   }
 }
+
+
+img{max-width:100%}
+
+/* Responsive helpers */
+@media (max-width: 920px){
+  .container{width:min(1120px, calc(100vw - 24px))}
+  .login-hero{padding:20px 0 16px}
+  .mascot-tile,
+  .login-form,
+  .main,
+  .panel{padding:18px}
+  .h1{font-size:28px}
+  .footer-inner,
+  .header-inner,
+  .form-row,
+  .chat-input{flex-wrap:wrap}
+  .footer-right{text-align:left}
+  .sidebar{
+    position:static;
+    height:auto;
+    max-height:none;
+    top:auto;
+  }
+  .main{
+    min-height:auto;
+  }
+  .chat{
+    height:auto;
+    min-height:unset;
+  }
+  .chat-log{
+    min-height:320px;
+    max-height:55vh;
+  }
+  .msg{max-width:100%}
+}
+
+@media (max-width: 640px){
+  html,body{height:auto; min-height:100%}
+  body{overflow-x:hidden}
+  .app{
+    height:auto;
+    min-height:100vh;
+    grid-template-rows:auto 1fr auto;
+  }
+  .header{position:static}
+  .header-inner{
+    height:auto;
+    align-items:flex-start;
+    gap:12px;
+    padding:12px 0;
+    flex-direction:column;
+  }
+  .header-right{
+    width:100%;
+    justify-content:flex-start;
+    flex-wrap:wrap;
+  }
+  .acme-logo{
+    width:100%;
+    flex-wrap:wrap;
+  }
+  .footer-inner{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+  .shell{
+    grid-template-columns:1fr;
+    padding:12px 0 16px;
+  }
+  .main-grid{grid-template-columns:1fr}
+  .badge{max-width:100%}
+  .chat-input > *{width:100%}
+  .chat-input .btn{width:100%}
+  .btn{width:100%}
+  .form-row > *{min-width:100%}
+  .nav-sub{margin-left:0; padding-left:8px}
+  .pin-logo{flex-wrap:wrap}
+  .pin-logo img:last-child{max-width:150px}
+  .mascot-tile img{width:min(320px, 100%)}
+  .h1{font-size:24px}
+  .login-grid{gap:16px}
+  .login-form details ul{padding-left:18px}
+}

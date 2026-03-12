@@ -1,20 +1,6 @@
 (() => {
   const $ = (id) => document.getElementById(id);
 
-  const bindEnterToButton = (container, buttonSelector) => {
-    if (!container) return;
-
-    container.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
-
-      const tag = (e.target?.tagName || "").toLowerCase();
-      if (tag === "textarea") return;
-
-      e.preventDefault();
-      const btn = container.querySelector(buttonSelector);
-      if (btn && !btn.disabled) btn.click();
-    });
-  };
 
   const now = new Date();
   $("year").textContent = String(now.getFullYear());
@@ -45,44 +31,54 @@
     $("password").value = "";
   });
 
-  $("loginBtn").addEventListener("click", () => {
+  const submitLogin = async () => {
     const company = $("company").value.trim() || defaults.company;
     const email = $("email").value.trim() || defaults.email;
     const password = $("password").value;
 
-    (async () => {
-      try {
-        const r = await fetch("/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ org_id: company, email, password })
-        });
-        if (!r.ok) {
-          const t = await r.text().catch(() => "");
-          throw new Error(t || `Login failed (${r.status})`);
-        }
-        const data = await r.json();
-        const user = data.user || {};
-
-        const session = {
-          company,
-          org_id: user.org_id || company,
-          email: user.email || email,
-          role: user.role || "end_user",
-          token: data.token,
-          isAuthenticated: true,
-          issuedAt: new Date().toISOString(),
-        };
-
-        localStorage.setItem("pin_demo_login", JSON.stringify({ company, email }));
-        localStorage.setItem("pin_session", JSON.stringify(session));
-
-        window.location.href = "./app.html";
-      } catch (e) {
-        alert(String(e?.message || e));
+    try {
+      const r = await fetch("/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ org_id: company, email, password })
+      });
+      if (!r.ok) {
+        const t = await r.text().catch(() => "");
+        throw new Error(t || `Login failed (${r.status})`);
       }
-    })();
+      const data = await r.json();
+      const user = data.user || {};
+
+      const session = {
+        company,
+        org_id: user.org_id || company,
+        email: user.email || email,
+        role: user.role || "end_user",
+        token: data.token,
+        isAuthenticated: true,
+        issuedAt: new Date().toISOString(),
+      };
+
+      localStorage.setItem("pin_demo_login", JSON.stringify({ company, email }));
+      localStorage.setItem("pin_session", JSON.stringify(session));
+
+      window.location.href = "./app.html";
+    } catch (e) {
+      alert(String(e?.message || e));
+    }
+  };
+
+  $("loginBtn").addEventListener("click", submitLogin);
+  $("loginForm")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    submitLogin();
   });
 
-  bindEnterToButton(document, "#loginBtn");
+  ["company", "email", "password"].forEach((id) => {
+    $(id)?.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+      e.preventDefault();
+      $("loginBtn")?.click();
+    });
+  });
 })();

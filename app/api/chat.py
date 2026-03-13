@@ -42,11 +42,9 @@ def _extract_kv(message: str) -> dict[str, str]:
 
 
 async def _llm_field_extract(message: str, required_fields: list[str], org_id: str) -> dict[str, Any]:
-    """Use the LLM to intelligently extract missing required fields from the user's message."""
     if not required_fields:
         return {}
     
-    # Gemini requires uppercase types for its schema
     schema = {
         "type": "OBJECT",
         "properties": {
@@ -54,20 +52,26 @@ async def _llm_field_extract(message: str, required_fields: list[str], org_id: s
         }
     }
     
+    # ADDED: Speed optimizations in the prompt
     prompt = (
-        f"Extract the following fields from the user's IT support request if they are present: {', '.join(required_fields)}.\n"
-        f"User message: '{message}'\n"
-        "Only extract values explicitly mentioned or clearly implied. For example, if they mention an iPhone, the OS is iOS. "
-        "Leave fields out or set to null if you are unsure."
+        f"EXTRACT ONLY: {', '.join(required_fields)}.\n"
+        f"INPUT: '{message}'\n"
+        "RULES:\n"
+        "1. Be extremely concise.\n"
+        "2. Only extract values explicitly mentioned.\n"
+        "3. If missing, return null.\n"
+        "4. Prioritize speed over conversational reasoning."
     )
     
     llm = get_llm(org_id=org_id)
     try:
+        # The call is now protected by a 120s timeout in the provider
         result_str = await llm.chat([{"role": "user", "content": prompt}], response_format=schema)
         return json.loads(result_str)
     except Exception as e:
-        print(f"LLM Extraction failed: {e}")
-        return {} # Fallback to empty if LLM fails
+        print(f"LLM Extraction failed or timed out: {e}")
+        return {}
+
 
 
 async def _merge_collected(state: SessionState, req: ChatRequest, org_id: str) -> None:
